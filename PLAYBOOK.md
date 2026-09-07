@@ -331,6 +331,21 @@ layout against the design.
 
 ---
 
+## One rule worth carrying to any migration
+
+**Identity is not a slug**, and a gate cannot miss content it was never shown.
+
+Four times in this kit a valid entity vanished before any check could see it —
+two Astro loaders deriving identity from a content field, a directory nobody
+owned, and two files producing one identity while every gate agreed with
+itself. Each time the build was green.
+
+So when you add a content kind, ask two questions before writing the feature:
+*what makes two of these the same thing*, and *which layer can see both of them
+at once*. Put the uniqueness check there — for content that is the filesystem,
+not the loaded collection. [scripts/identity/](scripts/identity/README.md) has
+the four invariants and where each is enforced.
+
 ## What this kit deliberately does not have
 
 **A synthetic migration framework.** The original project built sixteen

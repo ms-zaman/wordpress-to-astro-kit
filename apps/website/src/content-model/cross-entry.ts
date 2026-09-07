@@ -16,7 +16,11 @@ export interface ValidationIssue {
     /** A content directory that no collection claims — see read-entries.ts. */
     | "entry-directory-unclaimed"
     /** A registry JSON file that no collection claims. */
-    | "registry-file-unclaimed";
+    | "registry-file-unclaimed"
+    /** Two files produce one content identity — see ownership.ts. */
+    | "entry-identity-contested"
+    /** Two owners claim one collection. */
+    | "collection-ownership-contested";
   message: string;
 }
 

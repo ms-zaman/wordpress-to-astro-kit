@@ -20,6 +20,7 @@ import {
 } from "../src/content-model/registries.ts";
 import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
 import { migration } from "../../../migration.config.ts";
+import { collectionOwnershipIssues } from "../src/content-model/ownership.ts";
 import { seoOverrideSchema } from "../src/content-model/seo-override.ts";
 import { localeRegistry } from "../src/content-model/shared.ts";
 import { parseRedirectMap } from "../src/deployment/redirects.ts";
@@ -79,6 +80,29 @@ const assertUnique = (
 console.log(
   `Validating repository content at ${path.relative(process.cwd(), contentRoot)}\n`,
 );
+
+// Configuration first. Every collection must have exactly one owner, and this
+// is checked before a single file is read: `content.config.ts` composes its
+// collections with an object spread, so a contested collection means one whole
+// content set has already stopped existing by the time anything loads it.
+//
+// Fatal immediately rather than collected: every check below assumes it knows
+// which directory belongs to which collection. Measured — with a taxonomy
+// pointed at a post type's collection, this file crashed with an ENOENT
+// looking for a registry that was never supposed to exist, and the reader got
+// a stack trace instead of the one sentence that explains it.
+const ownership = collectionOwnershipIssues({
+  postTypes: migration.postTypes,
+  taxonomies: migration.taxonomies,
+});
+if (ownership.length > 0) {
+  console.error(
+    `\nContent configuration FAILED (${ownership.length} problem(s)):`,
+  );
+  for (const issue of ownership)
+    console.error(`  - [${issue.code}] ${issue.message}`);
+  process.exit(1);
+}
 
 // The site identity and the locale registry are parsed at module load; the
 // imports having succeeded is the assertion. Report them for visibility.

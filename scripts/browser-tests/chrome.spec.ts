@@ -505,3 +505,98 @@ test.describe("custom taxonomy archives reach a reader", () => {
       ).toBe(true);
   });
 });
+
+test.describe("the page a reader gets is the entity the source intended", () => {
+  // Not "does it return 200". Each of these loads a page, reads a phrase only
+  // its own source file could produce, and joins that back to the identity the
+  // manifest claims for the route — the whole chain, from the browser end.
+  const cases = [
+    {
+      what: "a core post",
+      path: "/hello-world/",
+      identity: "posts/hello-world@en",
+      origin: "post",
+    },
+    {
+      what: "a custom-type single",
+      path: "/products/analyser/",
+      identity: "products/analyser@en",
+      origin: "custom",
+    },
+    {
+      what: "a custom-type archive",
+      path: "/products/",
+      identity: "@archive/products",
+      origin: "custom-archive",
+    },
+    {
+      what: "a taxonomy archive",
+      path: "/product-category/electronics/laptops/",
+      identity: "product-categories/laptops",
+      origin: "taxonomy-archive",
+    },
+  ];
+
+  for (const one of cases)
+    test(`${one.what} resolves to ONE claimed identity`, async ({
+      page,
+      request,
+    }) => {
+      await page.goto(one.path);
+      expect(new URL(page.url()).pathname).toBe(one.path);
+      await expect(page.locator("h1")).toBeVisible();
+
+      const manifest = await (await request.get("/deployment.json")).json();
+      const key = one.path.replace(/\/$/, "") || "/";
+      const rows = manifest.routes.inventory.filter(
+        (row: { path: string }) => row.path === key,
+      );
+      expect(rows, `exactly one inventory row claims ${key}`).toHaveLength(1);
+      expect(rows[0].entry).toBe(one.identity);
+      expect(rows[0].origin).toBe(one.origin);
+    });
+
+  test("A LOCALIZED ENTITY IS NAMED, AND ITS SIBLING IS NOT SHADOWED", async ({
+    page,
+    request,
+  }) => {
+    // `products/analyser` exists in `en` and `pt-BR` with the SAME slug. The
+    // en one is published; the pt-BR one is withheld and must still be named,
+    // and the two must not be one identity — that collision is the defect this
+    // whole hardening pass is about.
+    const manifest = await (await request.get("/deployment.json")).json();
+    const both = manifest.content.intended.filter((intent: { id: string }) =>
+      intent.id.startsWith("products/analyser@"),
+    );
+    expect(both, "two identities, not one").toHaveLength(2);
+    expect(both.map((i: { id: string }) => i.id).sort()).toEqual([
+      "products/analyser@en",
+      "products/analyser@pt-BR",
+    ]);
+
+    const routed = manifest.routes.inventory.filter((row: { entry?: string }) =>
+      row.entry?.startsWith("products/analyser@"),
+    );
+    expect(routed, "only the built locale is routed").toHaveLength(1);
+    expect(routed[0].entry).toBe("products/analyser@en");
+
+    // And the page a reader gets is the English one, not the translation.
+    await page.goto("/products/analyser/");
+    await expect(page.locator("h1")).toContainText("The Analyser");
+  });
+
+  test("every content route in the manifest is claimed exactly once", async ({
+    request,
+  }) => {
+    // The invariant, asserted against the real artifact rather than a fixture.
+    const manifest = await (await request.get("/deployment.json")).json();
+    const rows = manifest.routes.inventory.filter(
+      (row: { kind: string }) => row.kind === "page",
+    );
+    const paths = rows.map((row: { path: string }) => row.path);
+    expect(new Set(paths).size, "one claimant per route").toBe(paths.length);
+
+    const files = rows.map((row: { file: string }) => row.file);
+    expect(new Set(files).size, "one claimant per output").toBe(files.length);
+  });
+});

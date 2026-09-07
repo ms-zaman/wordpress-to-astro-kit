@@ -17,6 +17,7 @@ import path from "node:path";
 import { z } from "astro/zod";
 
 import { migration } from "../../../migration.config.ts";
+import { entryIdentityIssues } from "../src/content-model/ownership.ts";
 import { clusterKey, localeCode, slug } from "../src/content-model/shared.ts";
 import {
   validateClusters,
@@ -29,6 +30,14 @@ import {
 /** An entry as the cross-entry rules see it. */
 export interface LoadedEntry {
   collection: string;
+  /**
+   * The file it came from, relative to `content/`.
+   *
+   * Carried so a collision can NAME both sides. A report that says "duplicate
+   * identity" without saying which two files leaves the reader grepping, and
+   * everything this contract catches is by nature hard to see.
+   */
+  file?: string;
   slug: string;
   locale: string;
   cluster: string;
@@ -319,7 +328,7 @@ export function readEntries(contentRoot: string): {
         }
         continue;
       }
-      entries.push({ collection: set.collection, ...result.data });
+      entries.push({ collection: set.collection, file: label, ...result.data });
     }
   }
 
@@ -383,6 +392,15 @@ export function validateContentTree(
   const { entries, problems } = readEntries(contentRoot);
 
   const issues = [
+    // Identity FIRST, because everything after it assumes the set of entries
+    // is the set of entries. A collision here means one of the competing files
+    // is already invisible to every check below.
+    //
+    // COLLECTION ownership is not here on purpose: it is a property of the
+    // configuration, not of a content tree, and asserting it inside a
+    // tree-shaped check made the contract's own fixture trees fail for a
+    // reason that had nothing to do with them. `validate-content.ts` owns it.
+    ...entryIdentityIssues(entries),
     ...unclaimedEntryDirectories(contentRoot),
     ...unclaimedRegistryFiles(contentRoot),
     ...validateClusters(entries),

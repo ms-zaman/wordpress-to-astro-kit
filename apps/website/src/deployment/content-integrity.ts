@@ -125,7 +125,12 @@ const CONTENT_FREE_ORIGINS = new Set(["static", "redirect"]);
  */
 const isStructural = (id: ContentId): boolean => id.startsWith("@");
 
-export type FindingKind = "SOURCE_ONLY" | "OUTPUT_ONLY" | "UNUSED_EXCLUSION";
+export type FindingKind =
+  | "SOURCE_ONLY"
+  | "OUTPUT_ONLY"
+  | "UNUSED_EXCLUSION"
+  /** Two intended entities share one identity, or one identity two routes. */
+  | "IDENTITY_CONTESTED";
 
 export interface IntegrityFinding {
   readonly kind: FindingKind;
@@ -195,10 +200,67 @@ export interface IntegrityInput {
  */
 export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
   const findings: IntegrityFinding[] = [];
+
+  // Defence in depth, and a lesson paid for: this gate joins through a `Map`
+  // and a `Set`, and BOTH of those deduplicate. Two intended entries with one
+  // identity used to collapse into one key, match the one emitted route, and
+  // report zero findings — the gate agreeing with itself about a page that had
+  // silently replaced another.
+  //
+  // The content contract catches this at the filesystem, which is the earliest
+  // boundary that sees both files. This is the second line, because a manifest
+  // can also be written by a build the contract never ran over.
+  const intendedSeen = new Map<ContentId, number>();
+  for (const intent of input.intended)
+    intendedSeen.set(intent.id, (intendedSeen.get(intent.id) ?? 0) + 1);
+  for (const [id, count] of [...intendedSeen].sort(([left], [right]) =>
+    left.localeCompare(right),
+  ))
+    if (count > 1)
+      findings.push({
+        kind: "IDENTITY_CONTESTED",
+        subject: id,
+        detail:
+          `${count} intended entries share this identity. One of them was ` +
+          "loaded and the rest were not, and a join through a map cannot tell " +
+          "that apart from there only ever having been one.",
+      });
+
   const emittedIds = new Map<ContentId, EmittedRoute>();
-  for (const route of input.emitted)
-    if (route.entry !== undefined && !emittedIds.has(route.entry))
-      emittedIds.set(route.entry, route);
+  const routesPerIdentity = new Map<ContentId, string[]>();
+  for (const route of input.emitted) {
+    if (route.entry === undefined) continue;
+    if (!emittedIds.has(route.entry)) emittedIds.set(route.entry, route);
+    const seen = routesPerIdentity.get(route.entry);
+    if (seen === undefined) routesPerIdentity.set(route.entry, [route.path]);
+    else seen.push(route.path);
+  }
+
+  // One identity claiming two routes that are not pages of one listing. A
+  // paginated archive legitimately spans several paths and shares one
+  // identity; two SINGLE pages from one entry is an entity published twice,
+  // which is a duplicate-content defect no search engine forgives.
+  for (const [id, paths] of [...routesPerIdentity].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (paths.length < 2) continue;
+    const listing = input.emitted.some(
+      (route) =>
+        route.entry === id &&
+        (route.origin === "pagination" ||
+          route.origin === "archive" ||
+          route.origin === "custom-archive" ||
+          route.origin === "taxonomy-archive"),
+    );
+    if (listing) continue;
+    findings.push({
+      kind: "IDENTITY_CONTESTED",
+      subject: id,
+      detail:
+        `one entity is published at ${paths.length} paths — ${paths.sort().join(", ")}. ` +
+        "Only a paginated listing may span several, and none of these is one.",
+    });
+  }
 
   const excusedBy = new Map<ContentId, Exclusion>();
   for (const exclusion of input.exclusions)

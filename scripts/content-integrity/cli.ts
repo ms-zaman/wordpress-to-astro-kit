@@ -176,6 +176,7 @@ if (report.excluded.length > 0) {
 }
 
 for (const kind of [
+  "IDENTITY_CONTESTED",
   "SOURCE_ONLY",
   "OUTPUT_ONLY",
   "UNUSED_EXCLUSION",

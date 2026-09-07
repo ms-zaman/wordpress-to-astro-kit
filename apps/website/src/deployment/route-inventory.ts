@@ -232,13 +232,23 @@ export function countRoutes(routes: readonly InventoryRoute[]): RouteCounts {
   };
 }
 
-/** Paths claimed by more than one route. Empty is the only correct answer. */
+/**
+ * Paths claimed by more than one route. Empty is the only correct answer.
+ *
+ * Compared through `routeKey`, not verbatim. `/about` and `/about/` are one
+ * page on a static host and one file on disk, so two rows carrying those two
+ * spellings are a contest — and this is a VALIDATOR, which may be handed a
+ * manifest written by something other than `buildRouteInventory`. Comparing
+ * the raw strings would have called them distinct and let two claimants share
+ * one output.
+ */
 export function duplicatePaths(routes: readonly InventoryRoute[]): string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
   for (const route of routes) {
-    if (seen.has(route.path)) duplicates.add(route.path);
-    seen.add(route.path);
+    const key = routeKey(route.path);
+    if (seen.has(key)) duplicates.add(key);
+    seen.add(key);
   }
   return [...duplicates].sort();
 }
