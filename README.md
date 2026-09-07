@@ -70,7 +70,7 @@ deliberately download none, and `pnpm test:browser` brings its own Chromium
 ## The shape of it
 
 ```
-migration.config.ts     the source site: origin, permalinks (read today); crawl settings (for tools not yet here)
+migration.config.ts     the source site: origin, permalinks, crawl pacing, route pairs. Every field has a reader.
 content/                pages, posts, registries, menus, redirects, SEO overrides
 research/               evidence: crawls, captures, the render-digest baselines you record
 apps/website/src/
@@ -97,6 +97,7 @@ scripts/                the gate ladder — see scripts/README.md
   docs-validator/       does every cross-reference still resolve?
   site-map-audit/       what the source site publishes, against what this build does
   content-capture/      the content census, and one post type captured to evidence
+  content-reconcile/    does our page SAY what the source page says?
   kit-init/             making the placeholder prefix yours
 ```
 

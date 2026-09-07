@@ -6,13 +6,12 @@
 // `scripts/accessibility-audit`, for `paginationSegment`, when it decides
 // whether a nav landmark is site chrome or belongs to one template.
 //
-// What does NOT read it yet: `evidenceDir`, `crawl`, `liveLanguagePrefixes`
-// and `routePairs` are the settings of the capture, crawl and reconciliation
-// tools, which are on the roadmap (README, "What is here, and what is not
-// yet") and not in this release. They are declared here so the shape is
-// settled and so a project can fill them in before the tools land — but a
-// value in one of them changes nothing today. The kit says so rather than
-// letting a field that nothing reads look like a feature.
+// Every field here has a reader, and that is a rule rather than a coincidence:
+// a setting nothing reads looks like a feature and is a lie. `permalinks` build
+// the route table; `liveOrigin`, `liveLanguagePrefixes` and `crawl` are read by
+// `site-map-audit` and `content-capture`; `evidenceDir` is where both write;
+// `routePairs` is read by `content-reconcile`. Delete a field before you let it
+// go unread.
 //
 // Nothing else in the kit names the source site, so a kit configured for a
 // different site is this file and the content it produces — not a fork.

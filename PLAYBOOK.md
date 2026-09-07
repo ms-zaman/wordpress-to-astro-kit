@@ -304,7 +304,10 @@ Capture the real thing early instead.
 **A design.** The tokens are neutral placeholders. §1.4 is the step that
 replaces them, and it is first for a reason.
 
-**Capture and reconciliation tooling.** Discovery and §5's capture loop are done
-by hand today. `migration.config.ts` holds the settings those tools will read
-and says plainly that nothing reads them yet — a field that looks like a feature
-and does nothing is the same lie as prose that describes what is not there.
+**The transform from a capture to your content entries.** `content-capture`
+writes the source site's posts to `research/`, verbatim and dated, and
+`content-reconcile` proves your built page says what the source page says. What
+sits between them — mapping a captured post onto your collection's schema — is
+left to you deliberately, because it is the one step that depends entirely on a
+schema the kit cannot know. Write it as a script in your own repo; the capture
+is stable JSON and the reconciler is the gate that tells you it landed.
