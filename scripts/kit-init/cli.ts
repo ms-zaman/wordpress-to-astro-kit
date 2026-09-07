@@ -5,6 +5,7 @@
 // Stamps your identity into the kit: renames the placeholder prefix on every
 // class, data attribute, build variable and workspace package, and writes the
 // site's name and origins where they live. See init.ts.
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -61,6 +62,23 @@ if (remaining.length > 0) {
   );
   process.exit(1);
 }
+
+// Re-format, because a rename changes line LENGTHS: a longer prefix pushes
+// wrapped lines past the print width and a shorter one lets them back, so a
+// renamed tree is no longer formatted the way the formatter would write it.
+// Without this the first `pnpm validate` after an init fails on formatting
+// alone, which is a poor first minute with a boilerplate.
+const formatted = spawnSync(
+  "pnpm",
+  ["exec", "prettier", "--write", "--log-level", "warn", "."],
+  { cwd: root, stdio: "inherit" },
+);
+if (formatted.status !== 0)
+  console.log(
+    "  note: could not run the formatter here. Run `pnpm install && pnpm format` before `pnpm validate`.",
+  );
+
 console.log(
-  `  done. Every class, variable and package now carries "${plan.nextPrefix}". Run \`pnpm install\` to refresh the workspace links, then \`pnpm build\`.`,
+  `  done. Every class, variable and package now carries "${plan.nextPrefix}". ` +
+    "Run `pnpm install` to refresh the workspace links, then `pnpm validate`.",
 );

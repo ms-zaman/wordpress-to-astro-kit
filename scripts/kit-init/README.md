@@ -17,6 +17,11 @@ Run it again with a different name and it renames again: the current prefix is
 read from `package.json`, never assumed. `--dry-run` lists what would change.
 After a rename, `pnpm install` refreshes the workspace links.
 
+It re-formats the tree afterwards. A rename changes line LENGTHS — a longer
+prefix pushes wrapped lines past the print width, a shorter one lets them
+back — so without that step the first `pnpm validate` after an init would fail
+on formatting alone.
+
 `pnpm kit:init-test` proves it on a copy of the repository: no file still
 carries the old prefix, the identity landed where it lives, and a second run
 reads the new prefix as current.
