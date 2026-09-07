@@ -1,6 +1,6 @@
 {
   "name": "wordpress-to-astro-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A boilerplate and a procedure for migrating a WordPress site to Astro: a minimal Astro app with the launch seams in place, content contracts, twelve quality gates, and the playbook \u2014 extracted from a real migration. Capture, crawl and reconciliation tooling is on the roadmap, not yet in the kit.",

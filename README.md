@@ -25,8 +25,8 @@ design, so that the first thing you do is measure the real one.
 
 ## What is here, and what is not yet
 
-Read this table before the quick start, so nothing below promises more than the
-repository holds.
+Release 0.2. Read this table before the quick start, so nothing below promises
+more than the repository holds.
 
 |                |                                                                                                                                                                                                                                                                                                                 |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
