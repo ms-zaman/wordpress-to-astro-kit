@@ -32,6 +32,18 @@ const check = (label: string, ok: boolean, detail = ""): void => {
   }
 };
 
+/**
+ * A target prefix that is not the one the tree already carries.
+ *
+ * The suite used to hard-code `acme`, which passed on the kit as shipped and
+ * failed on every tree somebody had already initialised — renaming `acme` to
+ * `acme` changes nothing, so five assertions about "it changed" failed. A
+ * test that only works before the tool has been used is not a test of the
+ * tool.
+ */
+const targetFor = (current: string): string =>
+  current === "acme" ? "zeta" : "acme";
+
 console.log("\nrenameText");
 check(
   "renames a class prefix",
@@ -81,8 +93,10 @@ try {
     },
   });
   const before = currentPrefix(copy);
+  const after = targetFor(before);
+  console.log(`  (renaming ${before} → ${after})`);
   const plan = planInit(copy, {
-    name: "acme",
+    name: after,
     siteName: "Acme Corp",
     origin: "https://acme.example/",
     liveOrigin: "https://old.acme.example",
@@ -107,7 +121,7 @@ try {
   );
   check(
     "the root package.json records the new prefix",
-    currentPrefix(copy) === "acme",
+    currentPrefix(copy) === after,
   );
   const site = JSON.parse(
     readFileSync(path.join(copy, "content/config/site.json"), "utf8"),
@@ -127,7 +141,7 @@ try {
   );
   check(
     "a component carries the new class prefix",
-    header.includes("acme-site-header") && !header.includes("wpk-"),
+    header.includes(`${after}-site-header`) && !header.includes(`${before}-`),
   );
   const env = readFileSync(
     path.join(copy, "apps/website/src/deployment/site-environment.ts"),
@@ -135,27 +149,28 @@ try {
   );
   check(
     "the launch switch carries the new variable",
-    env.includes('"ACME_SITE_ENV"'),
+    env.includes(`"${after.toUpperCase()}_SITE_ENV"`),
   );
   const website = JSON.parse(
     readFileSync(path.join(copy, "apps/website/package.json"), "utf8"),
   ) as { name: string; dependencies: Record<string, string> };
   check(
     "the workspace packages are re-scoped",
-    website.name === "@acme/website" && "@acme/ui" in website.dependencies,
+    website.name === `@${after}/website` &&
+      `@${after}/ui` in website.dependencies,
   );
   check(
     "the lockfile is re-scoped too",
     existsSync(path.join(copy, "pnpm-lock.yaml")) &&
       !readFileSync(path.join(copy, "pnpm-lock.yaml"), "utf8").includes(
-        "@wpk/",
+        `@${before}/`,
       ),
   );
 
-  const again = planInit(copy, { name: "beta" });
+  const again = planInit(copy, { name: targetFor(after) });
   check(
     "a second run reads the new prefix as current",
-    again.currentPrefix === "acme" && again.changes.length > 20,
+    again.currentPrefix === after && again.changes.length > 20,
   );
 } finally {
   rmSync(copy, { recursive: true, force: true });
