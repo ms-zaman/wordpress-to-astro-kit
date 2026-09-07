@@ -58,10 +58,17 @@ import { registryViolations } from "../src/review/decision-registry.ts";
 import { coverageGaps } from "../src/review/review-map.ts";
 import { signoffStatus } from "../src/release/signoff.ts";
 import {
+  authorPath,
+  categoryPath,
   expandPattern,
   isPaginationPath,
+  pagePath,
   paginatedPath,
+  permalinks,
   permalinkProblems,
+  postPath,
+  postsIndexPath,
+  tagPath,
 } from "../src/routing/permalink.ts";
 import { resolveSiteRoutes, routeParam } from "../src/routing/resolver.ts";
 import { routeKey, sitePath } from "../src/routing/url-shape.ts";
@@ -195,9 +202,30 @@ const posts = Array.from({ length: 11 }, (_, i) =>
     i === 0 ? ["sample"] : [],
   ),
 );
+/**
+ * The page slug that lands on the configured posts index, when one can: the
+ * fixture needs a page AT that path to exercise "a posts page supplies the
+ * listing's title", and the path comes from `migration.config.ts`, not from
+ * this file. `undefined` when the page and posts-index patterns cannot meet —
+ * which is a real configuration, not a failure, so the two assertions that
+ * need it say so and skip.
+ */
+const postsPageSlug = ((): string | undefined => {
+  const candidate = routeKey(postsIndexPath()).replace(/^\//, "");
+  if (candidate === "" || candidate.includes("/")) return undefined;
+  return routeKey(pagePath(candidate, [])) === routeKey(postsIndexPath())
+    ? candidate
+    : undefined;
+})();
+
 const sources = {
   posts,
-  pages: [page("home"), page("about"), page("team", "about"), page("blog")],
+  pages: [
+    page("home"),
+    page("about"),
+    page("team", "about"),
+    ...(postsPageSlug === undefined ? [] : [page(postsPageSlug)]),
+  ],
   authors: [{ slug: "jane-doe", name: "Jane Doe", nicename: "jane" }],
   categories: [
     { slug: "news", name: { en: "News" } },
@@ -217,44 +245,78 @@ check(
   "the front page is not also published at /home/",
   !paths.includes("/home/"),
 );
-check("a post at its permalink", paths.includes("/post-1/"));
-check("a child page under its parent", paths.includes("/about/team/"));
-check("the posts index at postsIndex", paths.includes("/blog/"));
+// Every expectation below is DERIVED from the configured permalinks rather
+// than written as a literal. The literals were the kit's own defaults, so
+// these ten assertions passed for the kit and failed for the first user who
+// changed a pattern — which is the first thing every user does. What is being
+// asserted is the RELATIONSHIP: the resolver puts a thing where the permalink
+// says it goes.
+const firstPost = posts[0]!;
+const expectedPostPath = postPath(firstPost.data, { authorNicename: "jane" });
+check("a post at its permalink", paths.includes(expectedPostPath));
 check(
-  "the posts page supplies the listing's title",
-  table.routes.find((r) => r.kind === "archive" && r.archive === "posts")
-    ?.title === "blog",
+  "a child page under its parent",
+  paths.includes(pagePath("team", ["about"])),
 );
+check("the posts index at postsIndex", paths.includes(postsIndexPath()));
+if (postsPageSlug === undefined) {
+  console.log(
+    "  – the posts page assertions are skipped: no page path can equal " +
+      `"${postsIndexPath()}" under the configured permalinks`,
+  );
+} else {
+  check(
+    "the posts page supplies the listing's title",
+    table.routes.find((r) => r.kind === "archive" && r.archive === "posts")
+      ?.title === postsPageSlug,
+  );
+  check(
+    "the posts page is not rendered as a page",
+    !table.routes.some(
+      (r) => r.kind === "page" && r.entry.data.slug === postsPageSlug,
+    ),
+  );
+}
 check(
-  "the posts page is not rendered as a page",
-  !table.routes.some((r) => r.kind === "page" && r.entry.data.slug === "blog"),
+  `${posts.length} posts at ${permalinks.postsPerPage} a page make the right last page`,
+  paths.includes(paginatedPath(postsIndexPath(), 2)) &&
+    !paths.includes(
+      paginatedPath(
+        postsIndexPath(),
+        Math.ceil(posts.length / permalinks.postsPerPage) + 1,
+      ),
+    ),
 );
-check(
-  "eleven posts at ten a page make a page two",
-  paths.includes("/blog/page/2/") && !paths.includes("/blog/page/3/"),
-);
-check("a category archive", paths.includes("/category/news/"));
-check("a tag archive", paths.includes("/tag/sample/"));
-check("an author archive at the nicename", paths.includes("/author/jane/"));
+check("a category archive", paths.includes(categoryPath("news")));
+check("a tag archive", paths.includes(tagPath("sample")));
+check("an author archive at the nicename", paths.includes(authorPath("jane")));
 check("posts are newest first", table.posts[0]?.data.slug === "post-11");
 check(
   "hrefOf answers for a post and a page",
-  table.hrefOf("post", "post-1") === "/post-1/" &&
+  table.hrefOf("post", firstPost.data.slug) === expectedPostPath &&
     table.hrefOf("page", "home") === "/",
 );
 check(
   "routeParam strips both slashes",
-  routeParam("/category/news/") === "category/news",
+  routeParam(categoryPath("news")) ===
+    routeKey(categoryPath("news")).replace(/^\//, ""),
 );
 check(
-  "two entries claiming one path throw by name",
+  // Two categories rather than a page colliding with a post: a page and a
+  // post can only collide when the two patterns happen to have the same
+  // shape, which is true of the defaults and of nothing else. Two rows of one
+  // registry collide under every pattern there is.
+  "two routes claiming one path throw by name",
   throws(
     () =>
       resolveSiteRoutes({
         ...sources,
-        pages: [...sources.pages, page("post-1")],
+        categories: [
+          ...sources.categories,
+          { slug: "news", name: { en: "News again" } },
+        ],
       }),
-    /Two routes claim \/post-1\//,
+    /Two routes claim /,
   ),
 );
 check(
@@ -284,7 +346,8 @@ check(
 );
 check(
   "pagination is its own origin",
-  inventory.find((r) => r.path === "/blog/page/2")?.origin === "pagination",
+  inventory.find((r) => r.path === routeKey(paginatedPath(postsIndexPath(), 2)))
+    ?.origin === "pagination",
 );
 check(
   "a redirect is in the inventory",
@@ -332,7 +395,12 @@ check(
 console.log("\nRedirects");
 const map = parseRedirectMap({
   rules: [
-    { from: "/old-post/", to: "/post-1/", status: 301, family: "renamed" },
+    {
+      from: "/old-post/",
+      to: expectedPostPath,
+      status: 301,
+      family: "renamed",
+    },
     { from: "/gone", to: "/nowhere", status: 301, family: "renamed" },
     { from: "/self", to: "/self/", status: 301, family: "renamed" },
   ],
@@ -358,7 +426,10 @@ check(
     (f) => f.rule.from === "/self" && f.problem === "self-redirect",
   ),
 );
-check("targets take the site's URL shape", map.rules[0]?.to === "/post-1/");
+check(
+  "targets take the site's URL shape",
+  map.rules[0]?.to === sitePath(expectedPostPath),
+);
 check(
   "_redirects lists rules before splats",
   /old-post.*\n[\s\S]*\/fr\/\* \/:splat 302/.test(toNetlifyRedirects(map)),

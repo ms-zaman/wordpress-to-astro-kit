@@ -124,6 +124,11 @@ has a date, a method and a link to the raw evidence. Unknowns say
 Run `pnpm validate`. Then open the site and click through it: the sample
 content is there to be walked, so you can see the shape before it is yours.
 
+> **Changing a permalink moves the pages, not the menus.** A menu row carries
+> the URL it points at, because menu structure is content. The build audit
+> checks every internal link against the routes the build produced, so a
+> chrome link left behind fails on every page at once rather than quietly.
+
 ---
 
 ## 3. Decisions (half a day)
