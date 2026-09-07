@@ -57,6 +57,7 @@ conditions. It is the left-hand side of every later comparison.
 > **The kit does not ship a crawler yet** (README, "What is here, and what is
 > not yet"). Any polite crawler does; `migration.config.ts`'s `crawl` block is
 > the discipline to follow, and the user agent there is what to identify as.
+> Write what you get into `research/`, with the date and the method.
 
 > **Trap.** A firewall that notices a burst will block the REST API for an
 > hour or more while pages keep answering 200. An inventory captured in that
@@ -92,6 +93,17 @@ and sizes per role, the container width, the gutters at each breakpoint, the
 primary action colour, heading and body colours, the gap between sections at
 375 and at 1440. Write them into `packages/tokens/src/tokens.css` and delete
 the `provisional` markers as you go.
+
+`pnpm a11y:audit` reads the palette back out of the CSS your build SHIPPED and
+holds every pair the components composite to its WCAG threshold, so a value that
+is unreadable as text fails the moment you paste it. Add a row to
+`CONTRAST_PAIRS` for every new pair a component of yours composites — a pair
+that is not in that table is a ratio nobody has measured.
+
+**Self-host the fonts while you are here** (`packages/tokens/src/fonts.css`).
+It is what makes `pnpm render:digest` comparable between your machine and CI;
+on a system font stack the two render different typefaces and no baseline can
+survive the trip.
 
 > **What happened.** The token file claimed its values were measured from the
 > live site. They were a page builder's unused global palette: six of twelve
@@ -182,7 +194,10 @@ For each set, the same loop:
    which renditions actually exist before writing a `srcset` — a guessed
    rendition is a broken image, not a smaller one.
 5. **Before importing, grep the gates** for site-wide ratios, `length === N`
-   and substring checks against HTML.
+   and substring checks against HTML. The one that bites hardest is any rule
+   that reasons about a MAJORITY of pages: importing 250 posts makes one
+   template 79% of the site, and `accessibility-audit`'s nav rule had to become
+   per-template-family because of exactly that.
 6. **After importing, LOOK at the listing and the archive** at 1440 and 375,
    beside the live one.
 7. `pnpm validate` green, then the set is done.
@@ -213,8 +228,14 @@ layout against the design.
 - **Painted, not declared.** A page builder's data describes what the
   document contains, which is not the same as what a reader sees.
 - **Walk it before you baseline it.** A screenshot baseline proves a page has
-  not changed. The first render of a new page has nothing to differ from, so
-  a baseline taken before a person looks records the defect as the reference.
+  not changed. The first render of a new page has nothing to differ from, so a
+  baseline taken before a person looks records the defect as the reference.
+  `pnpm render:digest -- --shots` writes a full-page PNG per route per width;
+  look at those, then `--update`, then read the diff.
+- **Run the browser gates on each new page.** `pnpm layout:audit` measures
+  overflow at six widths and `pnpm contrast:audit` measures every string
+  against the ground actually painted behind it — neither of which can be
+  answered by reading markup.
 
 ---
 
@@ -233,13 +254,26 @@ layout against the design.
    bottom, and read it. On a prose page, read it for content that does not
    belong there.
 6. **Record the sign-off** in `apps/website/src/release/signoff.ts`, with the
-   name of whoever actually looked. Permission to proceed is not a review.
+   name of whoever actually looked, the commit, the routes walked, and the
+   render-digest fingerprint at the time. Permission to proceed is not a
+   review. `pnpm release:review` reads that record back and reports
+   `RC_READY` / `RC_REVIEW_REQUIRED` / `RC_BLOCKED`; a sign-off carries forward
+   to later commits only while the digest is unchanged.
 7. **Cutover:** media host confirmed or mirrored → forms wired → deploy
    production to a temporary hostname → verify a redirect, `robots.txt`, the
    sitemap and a migrated page's images → point DNS → submit the sitemap.
 
-> **What happened.** Three releases, three walks, seven defects, every gate
-> green each time. An article page that had never been inside the site's
+> **What happened, in the kit itself.** Building this repository's twelve gates
+> and then walking its own six-page sample site found four defects every gate
+> had passed: a footer reading `© 2026Example Site` because two adjacent Astro
+> expressions emit nothing between them; an author bio rendering literal
+> Markdown backticks; a date and a label painted in `--color-link`, the one
+> token that means "this is a link"; and a screenshot showing `#` where `©`
+> should be, because the digest photographed the page after its own emoji
+> normalization. Six pages. Four defects. Twelve green gates.
+
+> **What happened, in the original project.** Three releases, three walks, seven
+> defects, every gate green each time. An article page that had never been inside the site's
 > container. A policy page rendering the live site's entire footer as prose
 > in its body. A heading at 1.06:1 on its own band. None was findable by a
 > gate: a decorative element has no text to measure, a valid layout is not
@@ -258,3 +292,8 @@ Capture the real thing early instead.
 
 **A design.** The tokens are neutral placeholders. §1.4 is the step that
 replaces them, and it is first for a reason.
+
+**Capture and reconciliation tooling.** Discovery and §5's capture loop are done
+by hand today. `migration.config.ts` holds the settings those tools will read
+and says plainly that nothing reads them yet — a field that looks like a feature
+and does nothing is the same lie as prose that describes what is not there.

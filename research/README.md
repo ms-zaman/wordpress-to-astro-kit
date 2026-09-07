@@ -1,41 +1,28 @@
-# research/
+# `research/`
 
-**Raw evidence. Observation only — never interpretation.**
+Evidence. Crawls, captures, measurements, baselines — the raw material every
+claim in `docs/` traces back to.
 
-Everything captured from the site being migrated lands here, exactly as it was
-received, and is **tracked in git**: it is the evidence base for every claim
-in `docs/`, and a claim whose evidence is not reviewable is an assumption.
+**Tracked by default.** `.gitignore` ignores only what is generated,
+temporary, or machine-specific; it never ignores `research/` wholesale, and it
+explicitly keeps capture logs, because a capture without its method and
+conditions is a number nobody can check.
 
-Every artifact records:
+**Never reformatted.** `research/` is in `.prettierignore`. A formatter
+rewriting captured evidence, however harmlessly, ends its value as evidence —
+in the project this kit came from, one `pnpm format` run collapsed 32,100 blank
+lines across 251 migrated bodies, and a byte-for-byte comparison against the
+live site would have been over.
 
-- **Source** — the exact URL, tool or origin
-- **Date and time** of capture, ISO 8601
-- **Method** — tool and version, the command or settings, the viewport where
-  it matters
-- **Conditions** — anything that would change the result on a re-run: network,
-  location, auth state, cache state
+## What belongs here
 
-## Rules
+| | |
+| --- | --- |
+| `url-inventory/` | What the live site publishes: sitemaps, a crawl, the URLs that answer |
+| `content-capture/` | What the REST API returned, per post type, with the date and the method |
+| `page-capture/` | Rendered pages from the live site, for the ones the API cannot describe |
+| `render-digest/` | This build's own recorded appearance — see the README there |
 
-- **Raw artifacts stay raw.** Never edit a capture to make it tidier or more
-  convenient. Corrections belong in the synthesis document, not in the
-  evidence.
-- **Observation here, interpretation in `docs/`.** Never mixed.
-- **Quantitative claims need a number, a sample size and a date.** Not "the
-  site is slow" — the metric, the URL, the run and the date.
-- **All collection is read-only and polite.** It must never modify the source
-  site.
-
-## Suggested layout
-
-```
-research/
-  crawls/         page HTML, sitemaps, robots.txt, URL inventories
-  captures/       structured captures (REST responses, rendered measurements)
-  screenshots/    visual captures, named with viewport and date
-  performance/    measurement output
-  seo/            metadata exports
-```
-
-Create a subdirectory when you have something to put in it, not to reserve a
-name.
+Every file says **when** it was captured, **how**, and **under what
+conditions**. A crawl taken while a firewall was throttling the REST API looks
+exactly like a crawl of a smaller site, and only the log tells them apart.

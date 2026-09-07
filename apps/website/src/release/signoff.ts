@@ -16,11 +16,17 @@
 // render digest is unchanged. The digest is the fingerprint of what every
 // route looks like — the same scope a reviewer walked — so the check is exact.
 //
-// NOT YET WIRED. Nothing in this release computes a digest or calls
-// `signoffStatus`: the producer (`scripts/render-digest`) and the consumer
-// (`scripts/release-audit`) are on the roadmap. The model is here so the
-// record's shape is settled; until those land, a row in `SIGNOFFS` is a
-// record for a person to read, not a gate a build passes.
+// Wired. `scripts/render-digest` produces the digest and
+// `scripts/release-audit` calls this, so a row here is read on every
+// `pnpm release:review`. Two things it depends on are not automatic:
+//
+//   - **A digest baseline has to exist.** The kit ships none, because a digest
+//     can only be compared across machines when the site self-hosts its fonts
+//     (`research/render-digest/README.md`). With no baseline the fingerprint is
+//     `"unavailable"`, a sign-off cannot carry forward past its own commit, and
+//     the release audit reports that rather than passing.
+//   - **The working tree has to be clean.** Only a commit can be reviewed, and
+//     a dirty tree means the thing built is not the thing any commit describes.
 
 export interface Signoff {
   /** The full 40-character commit SHA that was reviewed. */

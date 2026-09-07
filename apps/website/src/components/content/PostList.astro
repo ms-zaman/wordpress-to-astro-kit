@@ -154,9 +154,11 @@ const origin = mediaOrigin();
     text-decoration: none;
   }
 
+  /* Muted for the same reason the post meta label is: a date is not a link,
+     and `--color-link` is the one token that says otherwise. */
   .wpk-post-card__date {
     margin-block-start: var(--space-2xs);
-    color: var(--color-link);
+    color: var(--color-text-muted);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body-sm);
     font-weight: var(--font-weight-medium);

@@ -14,7 +14,7 @@ jobs:
   # every PR, because a gate that exists and runs nowhere is not a gate — it
   # is a thing somebody remembers to type.
   validate:
-    name: Install, lint, check, contracts, build
+    name: Install, lint, check, contracts, audits, build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -50,6 +50,11 @@ jobs:
       - name: Content validation
         run: pnpm content:validate
 
+      # Documentation is a surface too: a cross-reference that stops resolving
+      # is a source of truth that has silently stopped pointing anywhere.
+      - name: Docs validator
+        run: pnpm docs:validate
+
       # The rendering contract reads sources, so it runs before the build; the
       # build audit reads `dist/`, so `pnpm render:build-audit` builds first.
       - name: Rendering contract
@@ -58,8 +63,106 @@ jobs:
       - name: Build and build audit
         run: pnpm render:build-audit
 
+      # Three audits over the `dist/` the step above produced. They read
+      # emitted bytes and open no browser, so they belong here rather than in
+      # the stage job.
+      - name: Preview audit
+        run: node scripts/preview-audit/cli.ts
+
+      - name: Accessibility audit
+        run: node scripts/accessibility-audit/cli.ts
+
+      - name: SEO audit
+        run: node scripts/seo-audit/cli.ts
+
       - name: Suites
         run: pnpm test:all
+
+  # The gates that need a rendering engine. A separate job because they need a
+  # browser on the runner, and because a machine without one should still be
+  # able to run everything above.
+  stage:
+    name: Stage — browser gates and the release audit
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      # Full history, not the default depth of 1. The release audit asks
+      # whether a recorded sign-off is an ancestor of this build, and a shallow
+      # clone cannot answer that — `git-state.ts` reports "unknown" rather than
+      # "no", which is honest but still not an answer. This is what makes the
+      # answer available.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `scripts/lib/cdp.ts` drives a Chrome it finds on the machine and
+      # deliberately downloads none. `ubuntu-latest` ships Google Chrome; this
+      # states the requirement out loud so a runner image that stops shipping
+      # it fails here with a readable message rather than inside a CDP connect.
+      - name: Confirm a browser is present
+        run: |
+          command -v google-chrome || command -v chromium || {
+            echo "No Chrome-family browser on this runner."
+            echo "cdp.ts does not download one — see scripts/lib/cdp.ts."
+            exit 1
+          }
+
+      - name: Install Playwright's browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # One build, read by every gate below, so they describe one artifact
+      # rather than four.
+      - name: Build
+        run: pnpm build
+
+      # Horizontal overflow in a real engine, every route at every viewport,
+      # with fonts loaded. The one measurement that cannot be made by parsing
+      # markup.
+      - name: Layout audit
+        run: node scripts/layout-audit/cli.ts
+
+      # What every piece of text is actually READ against. The accessibility
+      # audit checks token PAIRS and runs in `validate`; a pair check cannot
+      # answer which ground an element is on, because that needs a layout
+      # engine.
+      - name: Contrast audit
+        run: node scripts/contrast-audit/cli.ts
+
+      # The interactions nothing else tests: the menu opens and closes, the
+      # skip link moves focus, no page loads a script.
+      - name: Browser tests
+        run: pnpm test:browser
+
+      # `render:digest` is deliberately NOT here. It compares this build's
+      # appearance against recorded baselines, and that comparison is only
+      # meaningful when the recording machine and this one lay text out
+      # identically — which needs SELF-HOSTED FONTS. The kit ships a system
+      # font stack, so baselines recorded on a laptop would differ here in
+      # every text box, for a reason that says nothing about the site.
+      # `research/render-digest/README.md` says when to add this step.
+
+      - name: Release audit
+        run: node scripts/release-audit/cli.ts --with-gates
+
+      - name: Publish the built site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-${{ github.sha }}
+          path: apps/website/dist
+          retention-days: 14
 
   # The production contract, audited on a production build — on demand, from
   # the Actions tab. Not on every push: while sample content is in the tree

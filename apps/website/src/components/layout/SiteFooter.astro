@@ -61,10 +61,11 @@ const year = new Date().getFullYear();
       </div>
 
       <div class="wpk-site-footer__bottom">
-        <p class="wpk-site-footer__credit">
-          © {year}
-          {SITE_NAME}
-        </p>
+        <!-- One line, and it has to stay one line: Astro emits two adjacent
+             expressions with nothing between them, so a newline here produces
+             "© 2026Example Site". Every gate passed that; a person reading a
+             screenshot found it. -->
+        <p class="wpk-site-footer__credit">© {year} {SITE_NAME}</p>
         {
           legal.length > 0 && (
             <ul role="list" class="wpk-site-footer__legal">

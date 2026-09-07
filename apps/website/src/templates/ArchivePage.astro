@@ -75,14 +75,24 @@ const seo = seoMetadata(
       page.page > 1
         ? `${route.title} – page ${page.page} – ${SITE_NAME}`
         : baseTitle,
+    // The fallback sentences are deliberately fuller than they need to read,
+    // because a description UNDER `META_DESCRIPTION_MIN` is worse than a plain
+    // one: a search engine ignores it and writes its own snippet from the
+    // page, throwing away the one sentence this site controlled. The short
+    // versions ("Posts filed under News on Acme.") measured 39 characters
+    // against a 50-character floor and `seo:audit` reported all four archives.
+    // Each form below clears the floor even with a one-word term and a short
+    // site name; the audit is what keeps that true.
     description: truncateAtWord(
       intro && intro !== ""
         ? intro
         : route.archive === "posts"
-          ? `Every post published on ${SITE_NAME}, newest first.`
+          ? `Browse every post published on ${SITE_NAME}, newest first.`
           : route.archive === "author"
-            ? `Posts by ${route.title} on ${SITE_NAME}.`
-            : `Posts filed under ${route.title} on ${SITE_NAME}.`,
+            ? `Every post written by ${route.title} on ${SITE_NAME}, newest first.`
+            : route.archive === "tag"
+              ? `Every post tagged ${route.title} on ${SITE_NAME}, newest first.`
+              : `Browse every post filed under ${route.title} on ${SITE_NAME}, newest first.`,
       META_DESCRIPTION_MAX,
     ),
   },

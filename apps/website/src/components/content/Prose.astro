@@ -217,6 +217,14 @@ const { measure = true, variant = "default" } = Astro.props;
     border-radius: var(--radius-sm);
     background-color: var(--color-surface);
     font-size: 0.9em;
+    /* An inline code span is one unbreakable word to a browser: no break
+       opportunity exists inside `apps/website/src/forms/definitions.ts`,
+       because nothing breaks at a slash by default. At 320px that one span
+       measured 331px and pushed the whole document to a scrollWidth of 355 —
+       found by `layout:audit` on its first run over this kit, not by looking.
+       A block that scrolls (`pre`, `table`) solves this by scrolling; an
+       inline span has to be allowed to break. */
+    overflow-wrap: break-word;
   }
 
   .wpk-prose :global(img) {

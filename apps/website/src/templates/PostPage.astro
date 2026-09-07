@@ -290,9 +290,13 @@ const crumbs = trailCrumbs(
     color: var(--color-text-muted);
   }
 
+  /* Muted, NOT `--color-link`. That token means "this is a link", and a label
+     painted with it is text a reader tries to click. Found by looking at a
+     screenshot: the label and the author link beside it were the same colour
+     and only one of them did anything. */
   .wpk-post__meta-label {
     font-weight: var(--font-weight-semibold);
-    color: var(--color-link);
+    color: var(--color-text-muted);
   }
 
   /* The separator belongs to the reading time, so it can never begin a

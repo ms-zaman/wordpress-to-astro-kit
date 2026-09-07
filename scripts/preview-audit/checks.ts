@@ -1,0 +1,392 @@
+// The five preview checks.
+//
+// Each is a pure function of a `BuildOutput`, so the mutation suite can build
+// a deliberately broken output in a temporary directory and run the same code
+// the real audit runs. Nothing here reads the repository: the audit's subject
+// is the build ARTIFACT, and an audit that consulted the source to decide
+// whether the output was right would pass for a build that never happened.
+//
+// Two of the checks lean on the manifest and three do not, which is
+// deliberate. "No broken links", "no missing assets" and "no undeclared
+// client script" are properties of the output alone and stay checkable if
+// `deployment.json` is ever removed. "Routes exist" is the one check that
+// needs a statement of intent, and the manifest is that statement.
+import path from "node:path";
+
+import {
+  validateManifest,
+  type DeploymentManifest,
+} from "../../apps/website/src/deployment/manifest.ts";
+import { DEPLOYMENT_MANIFEST_PATH } from "../../apps/website/src/deployment/route-inventory.ts";
+import { error, warning, type Finding } from "./finding.ts";
+import { htmlPages, type BuildOutput } from "./output.ts";
+import {
+  collectReferences,
+  declaresBase,
+  type Reference,
+} from "./references.ts";
+
+/** The manifest file inside the output, dist-relative. */
+export const MANIFEST_FILE = DEPLOYMENT_MANIFEST_PATH.replace(/^\//, "");
+
+export interface ManifestResult {
+  readonly findings: readonly Finding[];
+  /** Absent when the file is missing or unusable — the caller must handle that. */
+  readonly manifest?: DeploymentManifest;
+}
+
+/**
+ * Check 1 — the deployment manifest is present, parseable and structurally
+ * sound.
+ *
+ * A missing manifest is an `error` and not a throw: the other four checks are
+ * still worth running and still worth reporting, and an operator auditing a
+ * build produced before this tool existed should get four useful answers
+ * rather than a stack trace.
+ */
+export function checkManifest(output: BuildOutput): ManifestResult {
+  const file = output.files.get(MANIFEST_FILE);
+  if (file === undefined)
+    return {
+      findings: [
+        error(
+          "manifest",
+          MANIFEST_FILE,
+          "no deployment manifest in the build output. " +
+            "`src/pages/deployment.json.ts` emits it on every build, so its " +
+            "absence means this output came from a different tree or a partial copy.",
+        ),
+      ],
+    };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(file.text ?? "");
+  } catch (cause) {
+    return {
+      findings: [
+        error(
+          "manifest",
+          MANIFEST_FILE,
+          `is not valid JSON — ${(cause as Error).message}. A truncated manifest ` +
+            "usually means the artifact was copied while the build was still writing.",
+        ),
+      ],
+    };
+  }
+
+  const problems = validateManifest(parsed);
+  if (problems.length > 0)
+    return {
+      findings: problems.map((problem) =>
+        error(
+          "manifest",
+          problem.at === "" ? MANIFEST_FILE : `${MANIFEST_FILE}#${problem.at}`,
+          problem.detail,
+        ),
+      ),
+    };
+
+  const manifest = parsed as DeploymentManifest;
+  const findings: Finding[] = [];
+
+  // Not a defect — a local `pnpm build` has no pipeline to supply an instant —
+  // but a DEPLOYED artifact that cannot say when it was built is worth naming.
+  if (manifest.build.timestampSource === "placeholder")
+    findings.push(
+      warning(
+        "manifest",
+        MANIFEST_FILE,
+        "carries the build-timestamp placeholder. Expected for a local build; " +
+          "a deploy pipeline supplies WPK_BUILD_TIMESTAMP.",
+      ),
+    );
+
+  return { findings, manifest };
+}
+
+/**
+ * Check 2 — every route the manifest promised was emitted, and nothing else
+ * was.
+ *
+ * Both directions matter and they fail differently. A promised file that is
+ * absent is a page a visitor will 404 on. An emitted page the manifest does
+ * not claim is a page nothing knows about — it will not be in a sitemap, will
+ * not be checked by this audit's link resolution, and most often means a route
+ * module was added without the inventory being told.
+ */
+export function checkRoutes(
+  output: BuildOutput,
+  manifest: DeploymentManifest | undefined,
+): Finding[] {
+  if (manifest === undefined)
+    return [
+      error(
+        "routes",
+        "",
+        "cannot verify routes without a usable manifest — see the manifest findings above.",
+      ),
+    ];
+
+  const findings: Finding[] = [];
+  const promised = new Set<string>();
+
+  for (const route of manifest.routes.inventory) {
+    promised.add(route.file);
+    const emitted = output.files.get(route.file);
+    if (emitted === undefined) {
+      findings.push(
+        error(
+          "routes",
+          route.file,
+          `the manifest lists ${route.path} at this file, and it was not emitted. ` +
+            `Generated by ${route.source}.`,
+        ),
+      );
+      continue;
+    }
+    if (emitted.bytes === 0)
+      findings.push(
+        error(
+          "routes",
+          route.file,
+          `${route.path} was emitted as an empty file.`,
+        ),
+      );
+  }
+
+  for (const emitted of htmlPages(output))
+    if (!promised.has(emitted.file))
+      findings.push(
+        error(
+          "routes",
+          emitted.file,
+          "an HTML page was emitted that the manifest's route inventory does not " +
+            "claim. Add the route to `src/deployment/route-inventory.ts` — and to " +
+            "docs/04-implementation/route-ownership-table.md, so a person can see " +
+            "who owns it.",
+        ),
+      );
+
+  return findings;
+}
+
+/** Resolve a reference to the dist-relative path it points at, or `undefined`. */
+function resolveTarget(reference: Reference): string | undefined {
+  if (reference.scope === "internal")
+    return reference.target.replace(/^\//, "");
+  if (reference.scope !== "relative") return undefined;
+  const fromDirectory = path.posix.dirname(reference.from);
+  const joined = path.posix.normalize(
+    path.posix.join(
+      fromDirectory === "." ? "" : fromDirectory,
+      reference.target,
+    ),
+  );
+  return joined.startsWith("..") ? undefined : joined;
+}
+
+/**
+ * The files a same-origin page reference may be satisfied by.
+ *
+ * Directory-format output means `/blog/hello-world` is served from
+ * `blog/hello-world/index.html`; `/search-index.json` is served as itself.
+ * Both spellings are accepted because both are correct links to a real page.
+ */
+const pageCandidates = (target: string): string[] => {
+  const clean = target.replace(/\/$/, "");
+  if (clean === "") return ["index.html"];
+  return [`${clean}/index.html`, clean, `${clean}.html`];
+};
+
+/**
+ * Check 3 — every same-origin link a page makes reaches something the build
+ * emitted.
+ *
+ * External links are counted, never followed: fetching them would make the
+ * audit depend on the network and on other people's uptime, and a check that
+ * fails because someone else's site is down is a check nobody trusts.
+ */
+export function checkLinks(output: BuildOutput): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const document of htmlPages(output)) {
+    const html = document.text ?? "";
+
+    if (declaresBase(html))
+      findings.push(
+        error(
+          "links",
+          document.file,
+          "declares a <base href>, which changes what every relative URL on the " +
+            "page resolves to. No layout emits one; this audit's link resolution " +
+            "does not honour it.",
+        ),
+      );
+
+    for (const reference of collectReferences(document.file, html)) {
+      if (reference.isAsset) continue; // checkAssets owns those
+      if (reference.scope === "external" || reference.scope === "fragment")
+        continue;
+
+      const target = resolveTarget(reference);
+      if (target === undefined) {
+        findings.push(
+          error(
+            "links",
+            document.file,
+            `"${reference.raw}" resolves outside the build output.`,
+          ),
+        );
+        continue;
+      }
+
+      if (
+        !pageCandidates(target).some((candidate) => output.files.has(candidate))
+      )
+        findings.push(
+          error(
+            "links",
+            document.file,
+            `"${reference.raw}" is a broken internal link — no page or file was ` +
+              `emitted at ${target || "/"}.`,
+          ),
+        );
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Check 4 — every stylesheet, image and other fetched file a page names exists.
+ *
+ * Separate from the link check because the failure is different: a broken link
+ * takes a visitor nowhere, a missing asset renders the page wrong while it
+ * still loads. A host's 404 page is served for both, and only one of them is
+ * visible to somebody clicking around.
+ */
+export function checkAssets(output: BuildOutput): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const document of htmlPages(output))
+    for (const reference of collectReferences(
+      document.file,
+      document.text ?? "",
+    )) {
+      if (!reference.isAsset) continue;
+      if (reference.scope === "external" || reference.scope === "fragment")
+        continue;
+
+      const target = resolveTarget(reference);
+      if (target === undefined || !output.files.has(target)) {
+        findings.push(
+          error(
+            "assets",
+            document.file,
+            `<${reference.attribute}="${reference.raw}"> names an asset the build ` +
+              `did not emit${target === undefined ? "" : ` (${target})`}.`,
+          ),
+        );
+        continue;
+      }
+
+      if (output.files.get(target)?.bytes === 0)
+        findings.push(
+          error(
+            "assets",
+            document.file,
+            `the asset ${target} is a zero-byte file.`,
+          ),
+        );
+    }
+
+  return findings;
+}
+
+/**
+ * Check 5 — no page ships UNDECLARED client-side JavaScript.
+ *
+ * This runs against **an artifact**, wherever that artifact came from, which
+ * is the whole reason it exists next to the build audit: a host that injected
+ * an analytics snippet, a preview-protection widget or a cookie banner into
+ * the served HTML would be invisible to a check that ran inside the build.
+ *
+ * It also underwrites `references.ts`: a regex link reader is only sound over
+ * markup that no script rewrites. The two checks hold each other up — if a
+ * page ever ships an unexpected script, this fails loudly rather than the link
+ * check failing silently.
+ *
+ * Three narrowings, each with a reason:
+ *
+ *   - `<script type="application/ld+json">` is DATA. No engine executes it,
+ *     and the SEO audit is what checks that it parses and names a type.
+ *   - A script carrying `data-wpk-island="<name>"` is one somebody decided to
+ *     ship. This kit ships two: the search island and the form transport.
+ *   - A declared island is still held to the two things that make it safe to
+ *     read past: it is INLINE and it is NOT a module. Anything else is a
+ *     framework runtime by another name, and an island that loaded a bundle
+ *     could rewrite links whether or not it was declared.
+ */
+const DATA_BLOCK = /\btype="application\/ld\+json"/i;
+const ISLAND = /\bdata-wpk-island="[a-z0-9-]+"/i;
+
+export function checkScripts(output: BuildOutput): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const document of htmlPages(output)) {
+    const html = document.text ?? "";
+
+    for (const [tag] of html.matchAll(/<script\b[^>]*>/gi)) {
+      if (DATA_BLOCK.test(tag)) continue;
+      if (!ISLAND.test(tag)) {
+        findings.push(
+          error(
+            "scripts",
+            document.file,
+            "contains an undeclared executable <script> tag. This site ships no " +
+              "framework runtime and that is a property, not an accident — a " +
+              "script that needs to exist is named with data-wpk-island.",
+          ),
+        );
+        continue;
+      }
+      if (/\bsrc=/i.test(tag) || /\btype="module"/i.test(tag))
+        findings.push(
+          error(
+            "scripts",
+            document.file,
+            `declares an island that loads a bundle (${tag}). An island is inline ` +
+              "and is not a module; anything else is a framework runtime by " +
+              "another name.",
+          ),
+        );
+    }
+
+    if (html.includes("astro-island"))
+      findings.push(
+        error(
+          "scripts",
+          document.file,
+          "contains a hydration island. Every route is prerendered; an island " +
+            "means a component was made client-directed.",
+        ),
+      );
+
+    // Inline handlers are client script without a <script> tag, so the check
+    // above does not see them. `on` + letters guarded by `=` keeps it off
+    // legitimate attributes such as `only` or a filename containing "on".
+    const handler = /\son[a-z]{3,}\s*=\s*["']/i.exec(html);
+    if (handler !== null)
+      findings.push(
+        error(
+          "scripts",
+          document.file,
+          `carries the inline event handler \`${handler[0].trim()}\`, which is ` +
+            "client-side JavaScript in an attribute.",
+        ),
+      );
+  }
+
+  return findings;
+}

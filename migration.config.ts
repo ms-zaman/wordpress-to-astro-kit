@@ -2,9 +2,9 @@
 // project migrates FROM and how its URLs map onto this build.
 //
 // What reads it TODAY: the Astro app, for the permalink structure
-// (`permalinks`) and the media origin (`liveOrigin`). Nothing else in the kit
-// names the source site, so a kit configured for a different site is this
-// file and the content it produces — not a fork.
+// (`permalinks`) and the media origin (`liveOrigin`); and
+// `scripts/accessibility-audit`, for `paginationSegment`, when it decides
+// whether a nav landmark is site chrome or belongs to one template.
 //
 // What does NOT read it yet: `evidenceDir`, `crawl`, `liveLanguagePrefixes`
 // and `routePairs` are the settings of the capture, crawl and reconciliation
@@ -13,6 +13,9 @@
 // settled and so a project can fill them in before the tools land — but a
 // value in one of them changes nothing today. The kit says so rather than
 // letting a field that nothing reads look like a feature.
+//
+// Nothing else in the kit names the source site, so a kit configured for a
+// different site is this file and the content it produces — not a fork.
 //
 // `pnpm kit:init` writes the origins. Everything else is yours to edit.
 

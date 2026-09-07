@@ -41,7 +41,8 @@ const site = await loadSiteData();
 const seo = seoMetadata(
   {
     title: `Search – ${SITE_NAME}`,
-    description: `Search every post and page on ${SITE_NAME}.`,
+    // Long enough to clear `META_DESCRIPTION_MIN`; see ArchivePage.astro.
+    description: `Search every post, page and archive on ${SITE_NAME} by keyword.`,
   },
   findOverride(site.overrides, SEARCH_ROUTE, site.locale),
 );
