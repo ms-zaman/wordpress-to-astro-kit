@@ -39,6 +39,7 @@ be able to run everything in the first list.
 | [`lib/`](lib/)                                 | The shared seams: a Chrome driver, a static server, route discovery, the build's own manifest                                                 |
 | [`docs-validator/`](docs-validator/)           | Does every cross-reference in the documentation still resolve?                                                                                |
 | [`site-map-audit/`](site-map-audit/)           | What does the source site publish, and does this build account for all of it?                                                                 |
+| [`content-capture/`](content-capture/)         | What content exists on the source site, will it hand it over, and which bodies did not come back whole?                                       |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |

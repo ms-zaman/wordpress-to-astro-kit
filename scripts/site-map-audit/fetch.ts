@@ -18,10 +18,28 @@
 //   1. **Every loop waits.** `crawl.delayMs` between page requests,
 //      `crawl.mediaDelayMs` between the tighter REST loops the capture tools
 //      use. Both come from `migration.config.ts`.
-//   2. **A failure is never retried.** Retrying into a rate limit deepens it,
-//      and turns a recoverable pause into a longer block. A non-200 is
-//      RECORDED with its status and the run continues; if a whole family comes
-//      back 403, that is a finding for a person, not something to hammer at.
+//   2. **A failure is not retried to get past a refusal.** Retrying into a
+//      rate limit deepens it and turns a recoverable pause into a longer
+//      block. A non-200 is RECORDED with its status and the run continues; if
+//      a whole family comes back 403, that is a finding for a person, not
+//      something to hammer at.
+//
+// ## The one place a retry IS correct, and why
+//
+// The rule above is about DISCOVERY, where a failure becomes a recorded status
+// and the integrity guard refuses to report over a truncated capture.
+//
+// A CAPTURE that writes content is different, and getting this wrong is
+// measurable. In one run, 278 back-to-back media requests had 80 refused, and
+// the `catch` around each one turned that into 80 posts quietly losing their
+// featured image. A transient network condition had rewritten somebody's
+// content, and nothing said so.
+//
+// So `getRetrying` exists for exactly that case: a bounded retry with backoff,
+// used where NOT retrying would silently change what gets written. It is not a
+// fix for a genuine 404 — a missing attachment still ends up absent, which is
+// correct — it is what keeps a rate limiter from being recorded as an
+// editorial fact.
 //
 // ## Why it identifies itself
 //
@@ -86,6 +104,15 @@ export interface Fetched {
   readonly body?: string;
   /** Why the request produced no status: a timeout, DNS, a reset connection. */
   readonly error?: string;
+  /**
+   * Every response header, lowercased.
+   *
+   * Kept whole rather than picked, because WordPress answers a collection with
+   * `x-wp-total` and `x-wp-totalpages` and a reader that did not carry them
+   * would have to guess when a listing ended — which is how a capture silently
+   * stops at page one.
+   */
+  readonly headers: Readonly<Record<string, string>>;
 }
 
 const TEXTUAL = /^(text\/|application\/(json|xml|xhtml))/i;
@@ -145,6 +172,10 @@ export class PoliteReader {
         },
         signal: controller.signal,
       });
+      const headers: Record<string, string> = {};
+      response.headers.forEach((headerValue, name) => {
+        headers[name.toLowerCase()] = headerValue;
+      });
       const contentType = response.headers.get("content-type") ?? undefined;
       const location = response.headers.get("location") ?? undefined;
       const body =
@@ -154,6 +185,7 @@ export class PoliteReader {
       return {
         url,
         status: response.status,
+        headers,
         ...(location === undefined ? {} : { location }),
         ...(contentType === undefined ? {} : { contentType }),
         ...(body === undefined ? {} : { body }),
@@ -163,6 +195,7 @@ export class PoliteReader {
       return {
         url,
         status: 0,
+        headers: {},
         error:
           (cause as Error).name === "AbortError"
             ? `no response in ${this.#settings.timeoutMs / 1000}s`
@@ -171,5 +204,32 @@ export class PoliteReader {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * GET with a bounded retry, for a request whose FAILURE would silently
+   * change what gets written.
+   *
+   * Use it for the loops a capture runs hundreds of times — resolving media,
+   * resolving a term — and nowhere else. See the header for the measurement
+   * that separates this from the no-retry rule: 80 refused media requests
+   * became 80 posts quietly losing their featured image.
+   *
+   * A 404 is returned as a 404 on the first attempt and never retried: a
+   * missing attachment is a fact about the site, and hammering it would turn a
+   * correct answer into four requests.
+   */
+  async getRetrying(url: string, attempts = 4): Promise<Fetched> {
+    let last: Fetched | undefined;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const response = await this.get(url);
+      if (response.status >= 200 && response.status < 500) return response;
+      last = response;
+      // Backoff, on top of the pacing every request already waits for. A
+      // refusal means the server is asking for less, so asking again sooner
+      // is the one thing that cannot help.
+      if (attempt < attempts) await sleep(attempt * 750);
+    }
+    return last!;
   }
 }
