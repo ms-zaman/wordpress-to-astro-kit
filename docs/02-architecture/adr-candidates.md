@@ -5,7 +5,7 @@
 **Last updated:** <YYYY-MM-DD>
 **Phase:** 02-architecture
 
-The eight decisions every WordPress→Astro migration makes. Each becomes an
+The nine decisions every WordPress→Astro migration makes. Each becomes an
 ADR in `decisions/ADR/`, written as a proposal with its evidence, and accepted
 or rejected by a person.
 
@@ -19,6 +19,7 @@ or rejected by a person.
 | 6 | Forms and the lead pipeline | the integration census |
 | 7 | Media strategy — where uploads are served from after cutover | hosting |
 | 8 | Component and styling architecture | the presentation census |
+| 9 | Inherited markup — the builder's classes in a migrated body: carried, normalised, or stripped | the builder census (§1.3) and the body pipeline |
 
 ## Still open
 

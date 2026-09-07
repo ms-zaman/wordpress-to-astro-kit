@@ -92,6 +92,50 @@ export interface RoutePair {
   readonly ours: string;
 }
 
+/**
+ * How the source site's HTML has to be read.
+ *
+ * **WordPress is not one editor.** The same CMS renders through Gutenberg,
+ * Elementor, Divi, WPBakery, Beaver Builder and the classic editor, and a site
+ * with any history has two of them in different eras of itself. What a builder
+ * emits for a section it hides at every breakpoint is entirely its own
+ * business, so the reconciler is told rather than assuming.
+ *
+ * Measured profiles ship in `scripts/content-reconcile/builders.ts`. A builder
+ * that has no profile is not a blocker: name nothing, and add the class sets
+ * you read off your own pages below.
+ */
+export interface SourceMarkupConfig {
+  /**
+   * Builder profiles to apply. Measured: `"gutenberg"`, `"elementor"`.
+   *
+   * Naming an unmeasured builder is an error rather than a silent no-op — a
+   * typo that selected nothing would produce a report claiming to have dropped
+   * the hidden sections when it dropped none.
+   */
+  readonly builders: readonly string[];
+  /**
+   * Class SETS your theme or plugins use to hide a section at every width.
+   *
+   * A set, not a class: builders spell per-breakpoint hiding as one class per
+   * breakpoint, and a section hidden at three widths of four still paints at
+   * the fourth. An element counts as hidden only when it carries every class
+   * in one set.
+   *
+   * Read these off a section you KNOW your source site never paints. Do not
+   * guess them — a wrong marker either deletes real content from the
+   * comparison or matches nothing, and the report looks the same either way.
+   */
+  readonly hiddenEverywhere: readonly (readonly string[])[];
+  /**
+   * `[attribute, value]` pairs marking a subtree the document carries but the
+   * page is not — a popup, an off-canvas drawer. `role="dialog"` is applied
+   * for every site already; this is for the ones that mark themselves some
+   * other way.
+   */
+  readonly notPartOfThePage: readonly (readonly [string, string])[];
+}
+
 export interface MigrationConfig {
   /**
    * The WordPress site being migrated: scheme and host, no trailing slash.
@@ -116,6 +160,7 @@ export interface MigrationConfig {
    * SAY what live's page says?"). Empty until a page is built.
    */
   readonly routePairs: readonly RoutePair[];
+  readonly sourceMarkup: SourceMarkupConfig;
 }
 
 export const migration: MigrationConfig = {
@@ -140,4 +185,13 @@ export const migration: MigrationConfig = {
       "site-migration-discovery/0.1 (contact: set crawl.userAgent in migration.config.ts)",
   },
   routePairs: [],
+  sourceMarkup: {
+    // Gutenberg is the default because it is WordPress's own editor, and its
+    // profile is empty on purpose: core ships no responsive-hide utility at
+    // all, so there is nothing to drop. Add "elementor" — or your own sets —
+    // when discovery says what built the source site.
+    builders: ["gutenberg"],
+    hiddenEverywhere: [],
+    notPartOfThePage: [],
+  },
 };

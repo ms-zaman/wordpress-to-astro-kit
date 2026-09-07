@@ -34,9 +34,15 @@ declared ones. Computed, wherever possible._
 ## Theme and builder
 
 _Theme, page builder, and which plugins produce content rather than
-presentation._
+presentation. Record the builder(s) per ERA, not just the current one — a
+corpus usually carries more than one, and `migration.config.ts`'s
+`sourceMarkup.builders` is set from this answer._
 
 ## Bands the live site hides
 
 _A band hidden at every breakpoint is not rebuilt. List them, with the
-evidence that they are hidden._
+evidence that they are hidden — and with the CLASS SET that hides each one.
+Those sets go into `sourceMarkup.hiddenEverywhere` if the builder has no
+profile in the kit. Read them off the element; a guessed class either deletes
+real content from the comparison or matches nothing, and both look the same in
+the report._

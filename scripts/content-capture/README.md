@@ -94,6 +94,18 @@ A clean cliff. **Two signals find it, and either alone is wrong:**
   absolute cap**. This is what puts an entry on the list and earns it a page
   fetch.
 
+### Expect zero of these on a Gutenberg site
+
+This is a page-**builder** problem, not a WordPress problem. Gutenberg keeps its
+document in `post_content` as block markup with HTML comment delimiters, so a
+Gutenberg or classic-editor corpus hands `content.rendered` the whole article
+and this check finds nothing.
+
+**Zero incomplete bodies is then the correct answer, not a broken instrument.**
+Which builders your corpus carries is PLAYBOOK §1.3, and it tells you which
+answer to expect before you run this — so a silent zero is a confirmation
+rather than a thing to wonder about.
+
 ### The cap was a real defect, found by real data
 
 The first version used `min(median / 5, 1500)`. The cap had been added to stop

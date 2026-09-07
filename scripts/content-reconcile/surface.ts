@@ -24,7 +24,11 @@
 //
 //   1. **Anything hidden at every breakpoint, by ANCESTRY.** A page builder
 //      emits full markup for a section it never paints, and the flags sit on
-//      the section, not on the heading six levels down.
+//      the section, not on the heading six levels down. WHICH classes mean
+//      that is the builder's business and therefore configuration — see
+//      `builders.ts`. WordPress is not one editor, and a reconciler that
+//      hard-codes one builder's classes is silently wrong on every site built
+//      with another.
 //   2. **Anything the document carries but the page is not.** A popup ships
 //      inside the document and is not part of what the page says.
 //   3. **`aria-hidden="true"` subtrees.** This is better than a hand-kept list
@@ -37,40 +41,7 @@
 import { readFileSync } from "node:fs";
 
 import { attributeOf, blankEmbedded, walkElements } from "../lib/html-walk.ts";
-
-/**
- * Class sets that mean "painted at no width", one set per page builder.
- *
- * An element counts as hidden only when it carries EVERY class in one set.
- * Three of Elementor's four markers is a section that paints at exactly one
- * width, and dropping it would hide a real difference — measured: a support
- * page's FAQ band carried `desktop`, `tablet` and `mobile` but not `laptop`.
- *
- * **Only Elementor's set ships, because only Elementor's was measured.**
- * Inventing class names for the other builders would be exactly the guess this
- * kit warns against. To add yours: open a section your source site hides,
- * inspect it, and put its full marker set here. If your theme hides with
- * utility classes instead (`d-none d-md-none`), those are a set too.
- */
-export const HIDDEN_EVERYWHERE: readonly (readonly string[])[] = [
-  [
-    "elementor-hidden-desktop",
-    "elementor-hidden-laptop",
-    "elementor-hidden-tablet",
-    "elementor-hidden-mobile",
-  ],
-];
-
-/**
- * Attributes marking a subtree the document carries but the page is not.
- *
- * A popup, a modal, an off-canvas drawer: markup that ships with every page and
- * is shown by an interaction. Its text is not what the page says.
- */
-export const NOT_PART_OF_THE_PAGE: readonly (readonly [string, string])[] = [
-  ["data-elementor-type", "popup"],
-  ["role", "dialog"],
-];
+import type { SourceMarkup } from "./builders.ts";
 
 /** Elements whose text a reader acts on. */
 const LABEL_ELEMENTS = new Set(["a", "button", "label", "summary", "option"]);
@@ -118,17 +89,22 @@ export interface Asked {
 export const MIN_LENGTH = 3;
 export const MAX_LENGTH = 140;
 
-export interface SurfaceOptions {
-  /**
-   * Drop subtrees the page builder hides at every width.
-   *
-   * True for the SOURCE side, whose markup carries those flags. False for your
-   * own build, which does not emit a section it does not paint — and where a
-   * class that happened to collide with a marker name would silently delete
-   * real content.
-   */
-  readonly dropHidden: boolean;
-}
+/**
+ * How to read one side of the comparison.
+ *
+ * A union rather than a boolean and an optional table, because "drop what the
+ * builder hides" is meaningless without saying WHICH builder. The type makes
+ * the omission impossible: you cannot ask for hidden subtrees to be dropped
+ * without handing over the rules that define hidden.
+ *
+ * `dropHidden: true` is the SOURCE side, whose markup carries those flags.
+ * `false` is your own build, which does not emit a section it does not paint
+ * — and where a class that happened to collide with a marker name would
+ * silently delete real content.
+ */
+export type SurfaceOptions =
+  | { readonly dropHidden: false }
+  | { readonly dropHidden: true; readonly markup: SourceMarkup };
 
 /**
  * The document with everything unpainted blanked to spaces.
@@ -140,13 +116,17 @@ export function painted(html: string, options: SurfaceOptions): string {
   const blanked = blankEmbedded(html);
   const cuts: [number, number][] = [];
 
+  const rules: SourceMarkup = options.dropHidden
+    ? options.markup
+    : { hiddenEverywhere: [], notPartOfThePage: [] };
+
   const hiddenEverywhere = (classes: string): boolean =>
-    HIDDEN_EVERYWHERE.some((set) =>
+    rules.hiddenEverywhere.some((set) =>
       set.every((name) => classes.includes(name)),
     );
 
   const notPartOfThePage = (attributes: string): boolean =>
-    NOT_PART_OF_THE_PAGE.some(
+    rules.notPartOfThePage.some(
       ([name, expected]) => attributeOf(attributes, name) === expected,
     );
 

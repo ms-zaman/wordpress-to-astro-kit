@@ -34,6 +34,16 @@
 // one line here when somebody wants it.
 import { defineConfig, devices } from "@playwright/test";
 
+/**
+ * Where the suite's own server answers.
+ *
+ * `serve.ts` reads the same variable, so the two copies of the port cannot
+ * drift. Overridable because 4321 is somebody else's dev server on any machine
+ * running more than one project.
+ */
+const PORT = process.env.WPK_TEST_PORT ?? "4321";
+const ORIGIN = `http://127.0.0.1:${PORT}`;
+
 /** The two widths every other tool in this kit measures at. */
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 375, height: 812 };
@@ -52,15 +62,28 @@ export default defineConfig({
   // The build is static, so the server just serves `dist/`. It is NOT rebuilt
   // here: CI builds once and every gate reads that same output, which is what
   // makes them describe one artifact rather than five.
+  //
+  // `reuseExistingServer` is FALSE everywhere, including locally, and that is
+  // a correctness rule rather than a preference. Playwright's default is to
+  // adopt whatever already answers on the port — which means an unrelated dev
+  // server left running on 4321 becomes the thing under test. Measured: a
+  // sibling project's `astro dev` held the port and this suite ran sixteen
+  // assertions against somebody else's site, reporting them as this kit's
+  // failures. The dangerous half is the other one: a page that happens to
+  // satisfy the selectors would have reported GREEN for a build the run never
+  // loaded, and safe and honest are different properties.
+  //
+  // With this false, a busy port is a loud startup error naming the port,
+  // which is a thirty-second fix instead of an hour of reading tracebacks.
   webServer: {
     command: "node scripts/browser-tests/serve.ts",
-    url: "http://127.0.0.1:4321/",
-    reuseExistingServer: !process.env.CI,
+    url: `${ORIGIN}/`,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 
   use: {
-    baseURL: "http://127.0.0.1:4321",
+    baseURL: ORIGIN,
     // A trace on the first failure, because what this layer tests is a
     // SEQUENCE — "the menu opened, then it would not close" is unreadable from
     // an assertion message and obvious from a trace.

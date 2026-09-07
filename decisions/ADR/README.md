@@ -10,7 +10,7 @@ in a chat transcript, a report or a code comment is not a decision.
   the old one superseded.
 - One decision per ADR.
 
-## The eight a WordPress→Astro migration makes
+## The nine a WordPress→Astro migration makes
 
 1. **Rendering strategy** — static, server-rendered, or hybrid.
 2. **Content ownership** — repository files, a headless CMS, or both.
@@ -20,6 +20,11 @@ in a chat transcript, a report or a code comment is not a decision.
 6. **Forms and the lead pipeline** — where a submission goes, and who owns it.
 7. **Media** — which host serves the uploads namespace after cutover.
 8. **Component and styling architecture.**
+9. **Inherited markup** — what happens to the page builder's classes in a
+   migrated body. Carried verbatim and styled, normalised on the way in, or
+   stripped to semantic HTML. WordPress is not one editor, so this depends on
+   which builders §1.3 found and in what proportion; a corpus that is 90%
+   Gutenberg and 10% Elementor is a different decision from an even split.
 
 `docs/02-architecture/adr-candidates.md` holds the same list with what each
 depends on. `0000-template.md` is the shape.

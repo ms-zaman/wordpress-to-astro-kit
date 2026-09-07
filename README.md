@@ -70,7 +70,8 @@ deliberately download none, and `pnpm test:browser` brings its own Chromium
 ## The shape of it
 
 ```
-migration.config.ts     the source site: origin, permalinks, crawl pacing, route pairs. Every field has a reader.
+migration.config.ts     the source site: origin, permalinks, crawl pacing, route pairs,
+                        which page builder built it. Every field has a reader.
 content/                pages, posts, registries, menus, redirects, SEO overrides
 research/               evidence: crawls, captures, the render-digest baselines you record
 apps/website/src/

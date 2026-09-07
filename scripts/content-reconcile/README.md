@@ -53,6 +53,8 @@ matched the live one and a real difference reported itself as agreement.
    not on the heading six levels down. **Three markers are not four** —
    measured, a support page's FAQ band carried `desktop`, `tablet` and `mobile`
    but not `laptop`, so it painted at exactly one width and is real content.
+   Which classes mean this is **configuration**, not an assumption — see
+   "WordPress is not one editor" below.
 2. **Anything the document carries but the page is not** — a popup, a modal, an
    off-canvas drawer.
 3. **`aria-hidden="true"` subtrees.** Better than a hand-kept list of "icon
@@ -60,6 +62,45 @@ matched the live one and a real difference reported itself as agreement.
    and the accessible name is what a reader gets. It also keeps what such a list
    would wrongly silence — a screen-reader-only label is a real accessible name,
    and differing from it is worth a ruling rather than a hush.
+
+## WordPress is not one editor
+
+Gutenberg, Elementor, Divi, WPBakery, Beaver Builder, the classic editor — and
+any site with a history has two of them in different eras of itself. What a
+builder emits for a section it hides at every width is entirely its own
+business, so `migration.config.ts` declares it:
+
+```ts
+sourceMarkup: {
+  builders: ["gutenberg"],       // measured: "gutenberg", "elementor"
+  hiddenEverywhere: [],          // your theme's or plugins' sets
+  notPartOfThePage: [],
+}
+```
+
+The first version of this tool hard-coded Elementor's four classes, which made
+it **silently wrong on every other site**: a Gutenberg site got rules that match
+nothing while the report still claimed to have dropped the hidden sections.
+
+The profiles in `builders.ts` contain only class names read off a real
+stylesheet or a real page, and each says what was read. Two facts worth knowing:
+
+- **Gutenberg's set is empty, and that is the measurement.** WordPress core's
+  block library (10.5.0) ships no responsive-hide utility of any spelling — its
+  only `.hide` rule is an internal of the image block's lightbox. If your
+  Gutenberg site hides sections, the classes are your theme's or a plugin's.
+- **`role="dialog"` applies to every site**, profile or not. It is a role, not
+  a class: Gutenberg's navigation overlay, Elementor's popup and a theme's
+  search drawer all mark themselves that way because the accessibility contract
+  says to.
+
+Naming a builder with no profile is an **error**, not a silent no-op — a typo
+that selected nothing would produce a report claiming to have dropped the
+hidden sections when it dropped none. Divi, WPBakery and Beaver Builder are
+identified by `content-capture` but not profiled here: identifying a builder
+and knowing how it hides a section are different facts, and only the first has
+been established. Open a section your source site never paints, read the
+classes off it, and put the set in `hiddenEverywhere`.
 
 Hidden markers are dropped on the **source side only**. Your build does not
 emit a section it does not paint, and a class that happened to collide with a

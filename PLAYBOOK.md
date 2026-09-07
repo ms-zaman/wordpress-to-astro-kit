@@ -89,6 +89,27 @@ Theme, page builder, plugins. Which plugins produce *content* (a forms
 plugin, a docs plugin) versus *presentation*. Anything shipping a shortcode
 or a widget the successor must reproduce or retire.
 
+**Name the builder, and write it into `migration.config.ts`.** WordPress is not
+one editor: Gutenberg, Elementor, Divi, WPBakery, Beaver Builder and the classic
+editor all render the same CMS differently, and a site older than a few years
+usually carries two of them. Two later steps depend on this answer and get it
+wrong silently if you skip it:
+
+- `sourceMarkup.builders` tells the reconciler which classes mean "this section
+  paints at no width". Wrong builder, and it drops nothing while reporting that
+  it did.
+- §5's capture uses it to predict which bodies will arrive as stubs — a builder
+  that keeps its document in postmeta hands `content.rendered` an intro and
+  nothing else.
+
+If the builder has no profile in the kit, that is not a blocker: open a section
+the site never paints, read the classes off it, and put the set in
+`sourceMarkup.hiddenEverywhere`. Guessing them is worse than leaving it empty.
+
+**One builder is not the whole answer either.** Check a post from each era, not
+just the newest — the census that matters is which builders appear across the
+corpus, and in what proportion.
+
 ### 1.4 Measure the design — before building anything on it
 
 Open the live site in a real browser and read computed styles: font families
@@ -152,7 +173,7 @@ content is there to be walked, so you can see the shape before it is yours.
 
 ## 3. Decisions (half a day)
 
-Every migration answers the same eight questions. `decisions/ADR/` holds a
+Every migration answers the same nine questions. `decisions/ADR/` holds a
 template and the list. Write each as a proposal with the evidence behind it;
 a person accepts it. An ADR that cites no research is a guess with formatting.
 

@@ -6,6 +6,8 @@
 // specific way one page can differ from another.
 import process from "node:process";
 
+import { resolveMarkup, GUTENBERG, ELEMENTOR, PROFILES } from "../builders.ts";
+
 import {
   problemsOfKind,
   reconcile,
@@ -20,6 +22,10 @@ import {
   says,
   surfaceOf,
 } from "../surface.ts";
+
+// These fixtures are Elementor markup, so they are read by Elementor's rules.
+// That is now a choice the test states, not a default the reader inherits.
+const elementor = resolveMarkup({ builders: ["elementor"] });
 
 let passed = 0;
 const failures: string[] = [];
@@ -51,7 +57,7 @@ const pair = (
   route = "/pricing",
 ): RoutePairSurfaces => ({
   route,
-  live: surfaceOf(liveHtml, { dropHidden: true }),
+  live: surfaceOf(liveHtml, { dropHidden: true, markup: elementor }),
   ours: surfaceOf(oursHtml, { dropHidden: false }),
 });
 
@@ -120,7 +126,7 @@ check("A SECTION HIDDEN AT EVERY WIDTH IS DROPPED BY ANCESTRY", () => {
     '<section class="elementor-hidden-desktop elementor-hidden-laptop elementor-hidden-tablet elementor-hidden-mobile">' +
     "<div><div><h2>A band nobody sees</h2></div></div></section>" +
     "<h2>A band everybody sees</h2>";
-  const dropped = asked(html, { dropHidden: true });
+  const dropped = asked(html, { dropHidden: true, markup: elementor });
   assert(!dropped.has("a band nobody sees"), "the hidden band is gone");
   assert(dropped.has("a band everybody sees"), "the painted one stays");
 });
@@ -133,7 +139,9 @@ check("THREE MARKERS ARE NOT FOUR", () => {
     '<section class="elementor-hidden-desktop elementor-hidden-tablet elementor-hidden-mobile">' +
     "<h2>Painted at one width</h2></section>";
   assert(
-    asked(html, { dropHidden: true }).has("painted at one width"),
+    asked(html, { dropHidden: true, markup: elementor }).has(
+      "painted at one width",
+    ),
     "a partially hidden band is still content",
   );
 });
@@ -141,7 +149,7 @@ check("THREE MARKERS ARE NOT FOUR", () => {
 check("a popup ships inside the document and is not the page", () => {
   const html =
     '<div data-elementor-type="popup"><h2>Wait, do not go</h2></div><h2>The page</h2>';
-  const found = asked(html, { dropHidden: true });
+  const found = asked(html, { dropHidden: true, markup: elementor });
   assert(!found.has("wait, do not go"), "the popup is dropped");
   assert(found.has("the page"), "the page is not");
 });
@@ -165,7 +173,7 @@ check("HIDDEN MARKERS ARE ONLY DROPPED ON THE SOURCE SIDE", () => {
     '<section class="elementor-hidden-desktop elementor-hidden-laptop elementor-hidden-tablet elementor-hidden-mobile">' +
     "<h2>Ours</h2></section>";
   assert(
-    !asked(html, { dropHidden: true }).has("ours"),
+    !asked(html, { dropHidden: true, markup: elementor }).has("ours"),
     "source side drops it",
   );
   assert(asked(html, { dropHidden: false }).has("ours"), "our side keeps it");
@@ -377,6 +385,105 @@ check('a "reworded" ruling must name what this build says instead', () => {
     ]),
   );
   equal(named.length, 0, "one that names ours is accepted");
+});
+
+console.log("\nWordPress is not one editor");
+
+check("ELEMENTOR'S CLASSES DO NOT APPLY TO A GUTENBERG SITE", () => {
+  // The defect this whole seam exists for. The first version hard-coded
+  // Elementor's four markers, so a Gutenberg site was read by rules that match
+  // nothing while the report claimed to have dropped the hidden sections.
+  const gutenberg = resolveMarkup({ builders: ["gutenberg"] });
+  equal(gutenberg.hiddenEverywhere.length, 0, "core hides nothing by class");
+  const elementorMarkup =
+    '<section class="elementor-hidden-desktop elementor-hidden-laptop ' +
+    'elementor-hidden-tablet elementor-hidden-mobile"><h2>A band</h2></section>';
+  assert(
+    asked(elementorMarkup, { dropHidden: true, markup: gutenberg }).has(
+      "a band",
+    ),
+    "configured for Gutenberg, Elementor's markers mean nothing",
+  );
+  assert(
+    !asked(elementorMarkup, { dropHidden: true, markup: elementor }).has(
+      "a band",
+    ),
+    "configured for Elementor, they mean everything",
+  );
+});
+
+check(
+  "core's own hidden-section utility is EMPTY, and that is measured",
+  () => {
+    // Not an unfinished profile. @wordpress/block-library@10.5.0's stylesheet
+    // has no responsive-hide utility of any spelling; its only `.hide` rule is
+    // an internal of the image block's lightbox.
+    equal(GUTENBERG.hiddenEverywhere.length, 0, "nothing to drop");
+    assert(
+      GUTENBERG.measuredFrom.includes("block-library"),
+      "and it says what was read",
+    );
+  },
+);
+
+check("a screen-reader-only label SURVIVES every profile", () => {
+  // `screen-reader-text` is WordPress core's, and it is a real accessible name
+  // a reader genuinely gets. Silencing it would hide a real difference.
+  const html =
+    '<a href="/x"><span class="screen-reader-text">Read more about pricing</span></a>';
+  for (const profile of PROFILES) {
+    const markup = resolveMarkup({ builders: [profile.name] });
+    assert(
+      asked(html, { dropHidden: true, markup }).has("read more about pricing"),
+      `${profile.name} keeps it`,
+    );
+  }
+});
+
+check("A DIALOG IS NOT THE PAGE, WHATEVER BUILT IT", () => {
+  // A role, not a builder's class: Gutenberg's navigation overlay, Elementor's
+  // popup, a theme's search drawer all mark themselves this way. So a site
+  // whose builder has no profile still gets the one rule that holds
+  // everywhere.
+  const html =
+    '<div role="dialog"><h2>Subscribe now</h2></div><h2>The page</h2>';
+  const bare = resolveMarkup({ builders: [] });
+  const found = asked(html, { dropHidden: true, markup: bare });
+  assert(!found.has("subscribe now"), "the dialog is dropped with no profile");
+  assert(found.has("the page"), "the page is not");
+});
+
+check("an unmeasured builder is an ERROR, never a silent no-op", () => {
+  // A typo that selected nothing would produce a report claiming to have
+  // dropped the hidden sections when it dropped none — the exact failure this
+  // module exists to prevent, reintroduced one level up.
+  let threw = "";
+  try {
+    resolveMarkup({ builders: ["divi"] });
+  } catch (cause) {
+    threw = (cause as Error).message;
+  }
+  assert(threw.includes("divi"), "it names what was asked for");
+  assert(threw.includes("gutenberg"), "and what is available");
+  assert(
+    threw.includes("hiddenEverywhere"),
+    "and tells the reader what to do instead",
+  );
+});
+
+check("a site adds its OWN sets on top of a profile", () => {
+  // A Gutenberg site that hides sections does it with theme or plugin classes,
+  // because core has none. That has to be expressible without a profile.
+  const markup = resolveMarkup({
+    builders: ["gutenberg"],
+    hiddenEverywhere: [["hide-sm", "hide-md", "hide-lg"]],
+  });
+  const html =
+    '<section class="hide-sm hide-md hide-lg"><h2>Theme-hidden</h2></section>' +
+    '<section class="hide-sm hide-md"><h2>Two of three</h2></section>';
+  const found = asked(html, { dropHidden: true, markup });
+  assert(!found.has("theme-hidden"), "the full set is dropped");
+  assert(found.has("two of three"), "a partial set still paints somewhere");
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

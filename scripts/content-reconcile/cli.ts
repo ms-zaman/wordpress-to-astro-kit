@@ -29,6 +29,7 @@ import {
 } from "./reconcile.ts";
 import { RULINGS, rulingViolations } from "./rulings.ts";
 import { surfaceOfFile } from "./surface.ts";
+import { resolveMarkup } from "./builders.ts";
 import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
@@ -127,6 +128,17 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
+// Which builder built the source site is configuration, not an assumption:
+// WordPress renders through Gutenberg, Elementor, Divi and more, and reading
+// one site's markup by another's rules drops the wrong subtrees silently.
+let markup;
+try {
+  markup = resolveMarkup(migration.sourceMarkup);
+} catch (cause) {
+  process.stderr.write(`\n${(cause as Error).message}\n`);
+  process.exit(1);
+}
+
 const surfaces: RoutePairSurfaces[] = [];
 const missing: string[] = [];
 
@@ -147,7 +159,7 @@ for (const pair of pairs) {
     // this build does not emit a section it does not paint, and a class that
     // happened to collide with a marker name would silently delete real
     // content. So the two sides are read with different options, deliberately.
-    live: surfaceOfFile(liveFile, { dropHidden: true }),
+    live: surfaceOfFile(liveFile, { dropHidden: true, markup }),
     ours: surfaceOfFile(oursFile, { dropHidden: false }),
   });
 }

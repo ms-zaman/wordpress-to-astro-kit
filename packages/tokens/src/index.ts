@@ -10,10 +10,16 @@
 /**
  * Viewport breakpoints in px.
  *
- * PROVISIONAL: these are Elementor's default breakpoints (767 / 1024), which
- * is what most WordPress sites in the wild render with. Measure yours and
- * replace them; `docs/01-discovery/presentation-layer.md` is where the
- * measurement is recorded.
+ * PROVISIONAL, and the provenance matters. 767 / 1024 is a common pair — it
+ * is Elementor's default, and it is close to what many themes use — but there
+ * is no such thing as "the WordPress breakpoints": core's block library sets
+ * none for hiding, Gutenberg themes declare their own in `theme.json`, and
+ * every builder ships a different default. So this is a starting number, not
+ * an inherited fact.
+ *
+ * Measure yours off the source site and replace them;
+ * `docs/01-discovery/presentation-layer.md` is where the measurement is
+ * recorded.
  */
 export const breakpoints = {
   /** Max width of the mobile viewport range. */

@@ -32,6 +32,14 @@ Run in this order. Each rung reads something the one before it produced.
 them into two jobs for the same reason: a machine without Chrome should still
 be able to run everything in the first list.
 
+**`test:browser` binds port 4321 and refuses to share it.** Playwright's
+default is to adopt whatever already answers there, which means another
+project's dev server silently becomes the thing under test — measured, and it
+produced sixteen red assertions about somebody else's site. The reverse is
+worse: a page that happened to satisfy the selectors would have reported green
+for a build the run never loaded. So a busy port is a fatal, named error, and
+`WPK_TEST_PORT=4322 pnpm test:browser` is the way past it.
+
 ## What each one is for
 
 | Directory                                      | The question it answers                                                                                                                       |

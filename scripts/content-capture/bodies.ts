@@ -8,6 +8,13 @@
 // and most of the article missing. A capture that did not look would write
 // stub articles and report success.
 //
+// **This is a page-BUILDER problem, not a WordPress problem.** Gutenberg keeps
+// its document in `post_content` — block markup with HTML comment delimiters —
+// so a Gutenberg or classic-editor corpus hands `content.rendered` the whole
+// article and this check finds nothing. Zero incomplete bodies on such a site
+// is the correct answer, not a broken instrument. Which builders your corpus
+// carries is §1.3 of the PLAYBOOK, and it tells you which answer to expect.
+//
 // Measured on a real site, over 278 posts:
 //
 //   ordinary posts    n=264   8,698 – 153,234 chars   median 20,790
