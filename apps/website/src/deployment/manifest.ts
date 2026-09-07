@@ -26,6 +26,18 @@ import {
   type RouteCounts,
 } from "./route-inventory.ts";
 
+/** One custom post type, as this build treated it. */
+export interface PostTypeRecord {
+  /** The WordPress type key. */
+  readonly name: string;
+  /** The content directory and Astro collection. */
+  readonly collection: string;
+  readonly published: boolean;
+  readonly archive: "none" | "archive";
+  /** Taxonomy names attached to the type; no archive is published for them. */
+  readonly taxonomies: readonly string[];
+}
+
 /** What one collection contributed to the build. */
 export interface CollectionSummary {
   readonly name: string;
@@ -57,6 +69,14 @@ export interface DeploymentManifest {
      * is what lets it be reported as withheld instead of vanishing.
      */
     readonly intended: readonly IntendedContent[];
+    /**
+     * Custom post types this build knows about, and how it treated each.
+     *
+     * Recorded in the ARTIFACT so `content:integrity` reads what the build
+     * actually did rather than re-reading the configuration. A gate that reads
+     * the same config the build read cannot notice the build ignoring it.
+     */
+    readonly postTypes: readonly PostTypeRecord[];
   };
   /** The open hosting decision, stated in the artifact. */
   readonly hosting: {
@@ -82,6 +102,7 @@ export interface ManifestInput extends InventoryInput {
   readonly collections: readonly CollectionSummary[];
   readonly intended: readonly IntendedContent[];
   readonly locale: string;
+  readonly postTypes?: readonly PostTypeRecord[];
   readonly environment?: EnvironmentRecord;
 }
 
@@ -117,6 +138,9 @@ export function buildManifest(input: ManifestInput): DeploymentManifest {
       intended: [...input.intended].sort((left, right) =>
         left.id.localeCompare(right.id),
       ),
+      postTypes: [...(input.postTypes ?? [])].sort((left, right) =>
+        left.collection.localeCompare(right.collection),
+      ),
     },
     hosting: HOSTING_UNDECIDED,
   };
@@ -140,12 +164,18 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const ROUTE_KINDS = new Set(["page", "data", "redirect"]);
+// Kept in step with `RouteOrigin` in route-inventory.ts by hand, deliberately:
+// this validator reads a manifest that may have been written by a DIFFERENT
+// version of the kit, so deriving the set from the current type would make it
+// agree with itself and check nothing.
 const ROUTE_ORIGINS = new Set([
   "static",
   "page",
   "post",
   "archive",
   "pagination",
+  "custom",
+  "custom-archive",
   "redirect",
 ]);
 

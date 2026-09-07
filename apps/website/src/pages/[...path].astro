@@ -5,10 +5,17 @@
 // file. `/` is `index.astro`'s.
 import ArchivePage from "../templates/ArchivePage.astro";
 import ContentPage from "../templates/ContentPage.astro";
+import CustomArchivePage from "../templates/CustomArchivePage.astro";
+import CustomTypePage from "../templates/CustomTypePage.astro";
 import PostPage from "../templates/PostPage.astro";
+import {
+  CUSTOM_ARCHIVE_TEMPLATES,
+  CUSTOM_TYPE_TEMPLATES,
+} from "../templates/custom-type-templates.ts";
 import { routeParam, type SiteRoute } from "../routing/resolver.ts";
 import {
   loadSiteData,
+  type CustomEntry,
   type PageEntry,
   type PostEntry,
 } from "../routing/site-routes.ts";
@@ -21,12 +28,28 @@ export async function getStaticPaths() {
   }));
 }
 
-type Props = { route: SiteRoute<PostEntry, PageEntry> };
+type Props = { route: SiteRoute<PostEntry, PageEntry, CustomEntry> };
 
 const { route } = Astro.props;
 // Read again rather than passed as a prop: the table carries functions, and
 // Astro caches the collections, so this is a cache hit.
 const site = await loadSiteData();
+
+// The override seam. A collection with a template of its own gets it; every
+// other custom type gets the generic one. Looked up by COLLECTION, which is
+// what the content tree and the identity both use.
+const collection =
+  route.kind === "custom" || route.kind === "custom-archive"
+    ? route.profile.collection
+    : undefined;
+const CustomEntryTemplate = ((collection === undefined
+  ? undefined
+  : CUSTOM_TYPE_TEMPLATES[collection]) ??
+  CustomTypePage) as typeof CustomTypePage;
+const CustomListingTemplate = ((collection === undefined
+  ? undefined
+  : CUSTOM_ARCHIVE_TEMPLATES[collection]) ??
+  CustomArchivePage) as typeof CustomArchivePage;
 ---
 
 {
@@ -34,6 +57,10 @@ const site = await loadSiteData();
     <PostPage route={route} site={site} />
   ) : route.kind === "page" ? (
     <ContentPage route={route} site={site} />
+  ) : route.kind === "custom" ? (
+    <CustomEntryTemplate route={route} site={site} />
+  ) : route.kind === "custom-archive" ? (
+    <CustomListingTemplate route={route} site={site} />
   ) : (
     <ArchivePage route={route} site={site} />
   )

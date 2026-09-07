@@ -110,6 +110,15 @@ the site never paints, read the classes off it, and put the set in
 just the newest — the census that matters is which builders appear across the
 corpus, and in what proportion.
 
+**And name every post type.** `pnpm content:census` lists what the install
+registers and says what this kit is configured to do with each: core,
+configured, withheld, unconfigured, or internal to WordPress. A type reported
+as **unconfigured** is a decision waiting — nothing routes a type the kit was
+not told about, because nothing about a type says whether it should be a public
+URL. Decide, write a profile into `postTypes`, or record that it is not
+migrating. [scripts/custom-types/](scripts/custom-types/README.md) states what a
+profile can and cannot express.
+
 ### 1.4 Measure the design — before building anything on it
 
 Open the live site in a real browser and read computed styles: font families

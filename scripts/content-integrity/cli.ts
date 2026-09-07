@@ -21,6 +21,7 @@ import {
   checkContentIntegrity,
   findingsOfKind,
   localeExclusions,
+  unpublishedTypeExclusions,
   type Exclusion,
   type IntendedContent,
 } from "../../apps/website/src/deployment/content-integrity.ts";
@@ -54,6 +55,13 @@ let manifest: {
   content?: {
     locale?: string;
     intended?: IntendedContent[];
+    postTypes?: {
+      name: string;
+      collection: string;
+      published: boolean;
+      archive: string;
+      taxonomies: string[];
+    }[];
   };
   routes?: {
     inventory?: {
@@ -91,9 +99,21 @@ if (intended === undefined || locale === undefined || inventory === undefined) {
 
 const filesInDist = new Set(filesUnder(distDirectory));
 
-// The one systemic exclusion the kit ships. Derived from the rule rather than
-// hand-listed, but every entry it covers is still named in the report.
-const exclusions: Exclusion[] = localeExclusions(intended, locale);
+// Two systemic exclusions, both derived from a RULE rather than hand-listed —
+// nobody maintains a list of 1,235 translated entries or every row of a
+// withheld type — and both naming every entry they cover.
+//
+// Read from the manifest, not from migration.config.ts: a gate that reads the
+// same configuration the build read cannot notice the build ignoring it.
+const postTypeRecords = manifest.content?.postTypes ?? [];
+const withheldTypes = postTypeRecords
+  .filter((record) => !record.published)
+  .map((record) => ({ name: record.collection, type: record.name }));
+
+const exclusions: Exclusion[] = [
+  ...localeExclusions(intended, locale),
+  ...unpublishedTypeExclusions(intended, withheldTypes),
+];
 
 const report = checkContentIntegrity({
   intended,
@@ -107,10 +127,20 @@ process.stdout.write(
     `  locale built    ${locale}\n` +
     `  intended        ${intended.length}\n` +
     `  emitted         ${report.emitted.length}` +
-    `  (posts ${report.counts.posts}, pages ${report.counts.pages}, ` +
-    `categories ${report.counts.categories}, tags ${report.counts.tags}, ` +
-    `authors ${report.counts.authors})\n` +
-    `  excluded        ${report.excluded.length}\n`,
+    `  (${Object.entries(report.counts)
+      .filter(([key, value]) => key !== "total" && value > 0)
+      .map(([key, value]) => `${key} ${value}`)
+      .join(", ")})\n` +
+    `  excluded        ${report.excluded.length}\n` +
+    (postTypeRecords.length === 0
+      ? ""
+      : `  custom types    ${postTypeRecords
+          .map(
+            (record) =>
+              `${record.collection}${record.published ? "" : " (withheld)"}` +
+              `${record.archive === "archive" ? " +archive" : ""}`,
+          )
+          .join(", ")}\n`),
 );
 
 if (report.excluded.length > 0) {

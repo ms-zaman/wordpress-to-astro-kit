@@ -31,8 +31,13 @@ export const GET: APIRoute = async () => {
     ...site.routes.map((route) => ({
       path: route.path,
       kind: route.kind,
+      // A listing has no `updatedAt` of its own — it changes when its items do,
+      // and claiming one entry's date for the listing is a lie a crawler acts
+      // on. Both listing kinds behave the same way.
       lastModified:
-        route.kind === "archive" ? undefined : route.entry.data.updatedAt,
+        route.kind === "archive" || route.kind === "custom-archive"
+          ? undefined
+          : route.entry.data.updatedAt,
     })),
   ];
 

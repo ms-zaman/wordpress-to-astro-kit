@@ -266,11 +266,18 @@ test.describe("content reaches a reader", () => {
     // Skipped when the sample content carries only one locale, which is how
     // the kit ships — the assertion is about what happens WHEN one exists.
     const manifest = await (await request.get("/deployment.json")).json();
-    const other = manifest.content.intended.filter(
-      (intent: { id: string }) =>
-        intent.id.includes("@") &&
-        !intent.id.endsWith(`@${manifest.content.locale}`),
-    );
+    // The `@` has to come after the last `/`. A structural identity is spelled
+    // `@archive/products` and its `@` is at index 0 — reading that as a locale
+    // is the exact bug that made a published listing look withheld, caught
+    // once by the integrity gate and again here.
+    const localeOf = (id: string): string | undefined => {
+      const at = id.lastIndexOf("@");
+      return at > 0 && at > id.lastIndexOf("/") ? id.slice(at + 1) : undefined;
+    };
+    const other = manifest.content.intended.filter((intent: { id: string }) => {
+      const locale = localeOf(intent.id);
+      return locale !== undefined && locale !== manifest.content.locale;
+    });
     test.skip(
       other.length === 0,
       "sample content is single-locale; nothing is withheld",
@@ -285,5 +292,105 @@ test.describe("content reaches a reader", () => {
         routed.has(intent.id),
         `${intent.id} is named as intended and correctly not routed`,
       ).toBe(false);
+  });
+});
+
+test.describe("a custom post type reaches a reader", () => {
+  // The whole chain for a type WordPress did not ship with:
+  //
+  //   migration.config.ts profile -> content/products/ -> collection
+  //     -> identity -> permalink -> resolver -> [...path].astro -> dist
+  //     -> BROWSER
+  //
+  // Depends on: the `product` and `portfolio` fixture profiles in
+  // migration.config.ts, and their sample entries.
+  test("the single entry loads at its configured URL", async ({ page }) => {
+    await page.goto("/products/analyser/");
+    // The URL shape comes from `permalink: "/products/%postname%/"`. Nothing
+    // is named after it in the codebase — change the pattern and this moves.
+    expect(new URL(page.url()).pathname).toBe("/products/analyser/");
+    await expect(page.locator("h1")).toContainText("The Analyser");
+    await expect(
+      page.getByText("This is a custom post type entry"),
+    ).toBeVisible();
+  });
+
+  test("ITS MANIFEST IDENTITY IS THE COLLECTION, NOT THE TYPE KEY", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/products/analyser/");
+    const manifest = await (await request.get("/deployment.json")).json();
+    const route = manifest.routes.inventory.find(
+      (entry: { path: string }) => entry.path === "/products/analyser",
+    );
+    expect(route, "the route is in the manifest").toBeTruthy();
+    expect(route.origin).toBe("custom");
+    expect(route.entry).toBe("products/analyser@en");
+    expect(
+      manifest.content.intended.some(
+        (intent: { id: string }) => intent.id === route.entry,
+      ),
+      "and content/ intends it",
+    ).toBe(true);
+  });
+
+  test("the archive lists it, because the profile declares one", async ({
+    page,
+  }) => {
+    await page.goto("/products/");
+    await expect(page.locator("h1")).toContainText("Products");
+    await expect(
+      page.getByRole("link", { name: "The Analyser" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "The Collator" }),
+    ).toBeVisible();
+  });
+
+  test("A TYPE WITH NO ARCHIVE PUBLISHES NO LISTING", async ({
+    page,
+    request,
+  }) => {
+    // WordPress's own `has_archive` defaults to false, and a listing nobody
+    // asked for is a URL nobody asked for. The entry exists; the listing must
+    // not.
+    await page.goto("/portfolio/harbour-rebuild/");
+    await expect(page.locator("h1")).toContainText("Harbour Rebuild");
+
+    const manifest = await (await request.get("/deployment.json")).json();
+    const listing = manifest.routes.inventory.find(
+      (entry: { path: string }) => entry.path === "/portfolio",
+    );
+    expect(listing, "no /portfolio listing is claimed").toBeUndefined();
+  });
+
+  test("A WITHHELD TYPE PUBLISHES NOTHING AT ALL", async ({ request }) => {
+    // `published: false` — captured, validated, named as intended, and no page.
+    const manifest = await (await request.get("/deployment.json")).json();
+    const routed = manifest.routes.inventory.filter(
+      (entry: { entry?: string }) =>
+        entry.entry?.startsWith("internal-notes/") === true,
+    );
+    expect(routed, "no route for a withheld type").toHaveLength(0);
+    expect(
+      manifest.content.intended.some((intent: { id: string }) =>
+        intent.id.startsWith("internal-notes/"),
+      ),
+      "but it IS named as intended, so integrity can report it withheld",
+    ).toBe(true);
+  });
+
+  test("no custom route is emitted twice", async ({ request }) => {
+    const manifest = await (await request.get("/deployment.json")).json();
+    const paths = manifest.routes.inventory
+      .filter((entry: { origin: string }) =>
+        ["custom", "custom-archive"].includes(entry.origin),
+      )
+      .map((entry: { path: string }) => entry.path);
+    expect(new Set(paths).size, "every custom path is unique").toBe(
+      paths.length,
+    );
+    expect(paths.length, "and there are some to check").toBeGreaterThan(0);
   });
 });

@@ -1,0 +1,80 @@
+---
+// A custom post type's listing, one page of it.
+//
+// A separate template from `ArchivePage.astro` rather than a widened one,
+// matching the resolver's decision: an archive lists items of ONE type, and
+// making the post archive's item type a union would push a runtime narrowing
+// into a component that has no way to fail safely.
+//
+// A listing exists only because a profile declared `archive: { kind:
+// "archive" }`. WordPress's own `has_archive` defaults to false, and a listing
+// nobody asked for is a URL nobody asked for.
+import { Heading, Section } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import PaginationNav from "../components/content/PaginationNav.astro";
+import PostList, { type PostCard } from "../components/content/PostList.astro";
+import { trailCrumbs } from "../content-index/wayfinding.ts";
+import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
+import { truncateAtWord } from "../rendering/portable-body.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import { customTypePath } from "../routing/permalink.ts";
+import type { CustomArchiveRoute } from "../routing/resolver.ts";
+import type { CustomEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: CustomArchiveRoute<CustomEntry>;
+  site: SiteData;
+}
+
+const { route, site } = Astro.props;
+const { page, profile } = route;
+
+const crumbs = trailCrumbs([], route.title);
+
+// `PostList` takes cards, not posts — it was already shaped that way, so a
+// custom type's entries reuse it rather than growing a second list component.
+// `publishedAt` is optional on a custom type and required on a card, so an
+// entry without one falls back to the date it was last touched.
+const cards: PostCard[] = page.items.map((entry) => ({
+  href: customTypePath(profile, entry.data),
+  title: entry.data.title,
+  publishedAt: entry.data.publishedAt ?? entry.data.updatedAt,
+}));
+
+const description = `${route.title} — page ${page.page} of ${page.pageCount}, ${page.total} entr${page.total === 1 ? "y" : "ies"} in total on ${SITE_NAME}.`;
+
+const seo = seoMetadata(
+  {
+    title:
+      page.page === 1
+        ? `${route.title} – ${SITE_NAME}`
+        : `${route.title}, page ${page.page} – ${SITE_NAME}`,
+    description: truncateAtWord(description, META_DESCRIPTION_MAX),
+  },
+  findOverride(site.overrides, route.path, site.locale),
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={site.locale}
+  crumbs={crumbs}
+>
+  <Section gap="sm">
+    <Breadcrumbs crumbs={crumbs} />
+    <Heading as="h1" size="xl">{route.title}</Heading>
+    <PostList
+      posts={cards}
+      locale={site.locale}
+      headingAs="h2"
+      emptyMessage={`No ${route.title.toLowerCase()} are published yet.`}
+    />
+    <PaginationNav base={route.base} page={page} />
+  </Section>
+</BaseLayout>

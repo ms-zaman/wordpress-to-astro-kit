@@ -9,14 +9,21 @@
 //
 // Two routes claiming one path THROWS, by name: Astro would fail the build on
 // the duplicate anyway, and failing here says which two entries collide.
+import {
+  migration,
+  type PostTypeProfile,
+} from "../../../../migration.config.ts";
 import { paginate, type PageOf } from "../content-index/pagination.ts";
 import { routeKey } from "./url-shape.ts";
 import {
   authorPath,
   categoryPath,
+  customTypeArchivePath,
+  customTypePath,
   pagePath,
   paginatedPath,
   permalinkProblems,
+  postTypeProfileProblems,
   permalinks,
   postPath,
   postsIndexPath,
@@ -78,6 +85,7 @@ export interface TermRow {
 export interface RouteSources<
   Post extends EntryLike<PostEntryData>,
   Page extends EntryLike<PageEntryData>,
+  Custom extends EntryLike<CustomEntryData> = never,
 > {
   readonly posts: readonly Post[];
   readonly pages: readonly Page[];
@@ -85,9 +93,30 @@ export interface RouteSources<
   readonly categories: readonly TermRow[];
   readonly tags: readonly TermRow[];
   readonly locale: string;
+  /**
+   * Custom-type entries, keyed by COLLECTION name.
+   *
+   * Keyed by collection rather than by WordPress type key because the
+   * collection is what the content tree and the identity use, and two installs
+   * have used one type key for different things. The profile carries both.
+   */
+  readonly custom?: Readonly<Record<string, readonly Custom[]>>;
+  /** The profiles to route. Defaults to `migration.config.ts`'s. */
+  readonly postTypes?: readonly PostTypeProfile[];
 }
 
 export type ArchiveKind = "posts" | "category" | "tag" | "author";
+
+/** An entry of a custom post type, as its collection yields one. */
+export interface CustomEntryData {
+  readonly slug: string;
+  readonly title: string;
+  readonly locale: string;
+  readonly updatedAt: string;
+  readonly publishedAt?: string;
+  readonly excerpt?: string;
+  readonly terms?: Readonly<Record<string, readonly string[]>>;
+}
 
 export interface PageRoute<Page> {
   readonly kind: "page";
@@ -101,6 +130,40 @@ export interface PostRoute<Post> {
   readonly kind: "post";
   readonly path: string;
   readonly entry: Post;
+}
+
+/**
+ * One entry of a custom post type.
+ *
+ * Carries its PROFILE, not just its entry, so a route can answer every
+ * question a renderer or an audit asks without inferring anything from the
+ * path: which collection it came from, which pattern produced the URL, which
+ * template renders it. A resolver that decided "this does not look like a page
+ * or a post, so it must be custom" would be a heuristic wearing a type.
+ */
+export interface CustomRoute<Custom> {
+  readonly kind: "custom";
+  readonly path: string;
+  readonly entry: Custom;
+  readonly profile: PostTypeProfile;
+}
+
+/**
+ * A custom type's listing, when its profile declares one.
+ *
+ * Its own kind rather than a widened `ArchiveRoute`, because an archive lists
+ * items of ONE type and `ArchiveRoute` lists posts. Widening it would make
+ * every post archive's item type a union that `ArchivePage` would have to
+ * narrow at runtime — a type hole opened to save a file.
+ */
+export interface CustomArchiveRoute<Custom> {
+  readonly kind: "custom-archive";
+  readonly path: string;
+  /** The listing's own URL: page 1. */
+  readonly base: string;
+  readonly title: string;
+  readonly page: PageOf<Custom>;
+  readonly profile: PostTypeProfile;
 }
 
 export interface ArchiveRoute<Post, Page> {
@@ -119,15 +182,20 @@ export interface ArchiveRoute<Post, Page> {
   readonly indexPage?: Page;
 }
 
-export type SiteRoute<Post, Page> =
-  PageRoute<Page> | PostRoute<Post> | ArchiveRoute<Post, Page>;
+export type SiteRoute<Post, Page, Custom = never> =
+  | PageRoute<Page>
+  | PostRoute<Post>
+  | ArchiveRoute<Post, Page>
+  | CustomRoute<Custom>
+  | CustomArchiveRoute<Custom>;
 
 export interface SiteRouteTable<
   Post extends EntryLike<PostEntryData>,
   Page extends EntryLike<PageEntryData>,
+  Custom extends EntryLike<CustomEntryData> = never,
 > {
   /** Every route the `[...path]` module renders. Never includes `/`. */
-  readonly routes: readonly SiteRoute<Post, Page>[];
+  readonly routes: readonly SiteRoute<Post, Page, Custom>[];
   /** What `/` renders: a page, page 1 of the posts listing, or nothing. */
   readonly frontPage: PageRoute<Page> | ArchiveRoute<Post, Page> | undefined;
   /**
@@ -149,6 +217,10 @@ export interface SiteRouteTable<
   readonly authorOf: (slug: string) => AuthorRow | undefined;
   readonly categoryOf: (slug: string) => TermRow | undefined;
   readonly tagOf: (slug: string) => TermRow | undefined;
+  /** Every routed custom-type entry, by collection. */
+  readonly custom: Readonly<Record<string, readonly Custom[]>>;
+  /** The profiles this table routed, so an audit need not re-read the config. */
+  readonly postTypes: readonly PostTypeProfile[];
 }
 
 /** The display name of a registry row in a locale, falling back to the default. */
@@ -174,14 +246,23 @@ export function orderPostsByDate<Post extends EntryLike<PostEntryData>>(
 const describe = <
   Post extends EntryLike<PostEntryData>,
   Page extends EntryLike<PageEntryData>,
+  Custom extends EntryLike<CustomEntryData>,
 >(
-  route: SiteRoute<Post, Page>,
-): string =>
-  route.kind === "page"
-    ? `page "${route.entry.data.slug}"`
-    : route.kind === "post"
-      ? `post "${route.entry.data.slug}"`
-      : `${route.archive} archive "${route.title}" page ${route.page.page}`;
+  route: SiteRoute<Post, Page, Custom>,
+): string => {
+  switch (route.kind) {
+    case "page":
+      return `page "${route.entry.data.slug}"`;
+    case "post":
+      return `post "${route.entry.data.slug}"`;
+    case "custom":
+      return `${route.profile.name} "${route.entry.data.slug}"`;
+    case "custom-archive":
+      return `${route.profile.name} archive page ${route.page.page}`;
+    case "archive":
+      return `${route.archive} archive "${route.title}" page ${route.page.page}`;
+  }
+};
 
 /**
  * Resolve the whole route table for one locale.
@@ -193,11 +274,24 @@ const describe = <
 export function resolveSiteRoutes<
   Post extends EntryLike<PostEntryData>,
   Page extends EntryLike<PageEntryData>,
->(sources: RouteSources<Post, Page>): SiteRouteTable<Post, Page> {
+  Custom extends EntryLike<CustomEntryData> = never,
+>(
+  sources: RouteSources<Post, Page, Custom>,
+): SiteRouteTable<Post, Page, Custom> {
   const problems = permalinkProblems();
   if (problems.length > 0)
     throw new Error(
       `migration.config.ts permalinks are not usable:\n  - ${problems.join("\n  - ")}`,
+    );
+
+  // A custom type whose profile this kit cannot honour must stop the build
+  // here, before any route exists. The alternative is publishing a URL that
+  // WordPress never served, which is the one thing a migration must not do.
+  const postTypes = sources.postTypes ?? migration.postTypes;
+  const profileProblems = postTypeProfileProblems(postTypes);
+  if (profileProblems.length > 0)
+    throw new Error(
+      `migration.config.ts postTypes are not usable:\n  - ${profileProblems.join("\n  - ")}`,
     );
 
   const { locale } = sources;
@@ -212,7 +306,7 @@ export function resolveSiteRoutes<
   );
   const tagsBySlug = new Map(sources.tags.map((row) => [row.slug, row]));
 
-  const routes: SiteRoute<Post, Page>[] = [];
+  const routes: SiteRoute<Post, Page, Custom>[] = [];
   const hrefs = new Map<string, string>();
 
   // Pages: resolve each parent chain, outermost first.
@@ -343,9 +437,58 @@ export function resolveSiteRoutes<
       { author },
     );
 
+  // Custom post types. Each profile is explicit about all three questions —
+  // is it published, does it have a listing, does it need taxonomy routing —
+  // and the profile was validated above, so nothing here guesses.
+  const routedCustom: Record<string, Custom[]> = {};
+  for (const profile of postTypes) {
+    const all = sources.custom?.[profile.collection] ?? [];
+    // Same locale rule as everything else, and for the same reason: no URL
+    // strategy for translations is assumed. `content:integrity` names each
+    // withheld entry rather than letting it disappear.
+    const entries = all.filter((entry) => entry.data.locale === locale);
+    if (!profile.published) {
+      routedCustom[profile.collection] = [];
+      continue;
+    }
+
+    const ordered = [...entries].sort(
+      (left, right) =>
+        (right.data.publishedAt ?? "").localeCompare(
+          left.data.publishedAt ?? "",
+        ) || left.data.slug.localeCompare(right.data.slug),
+    );
+    routedCustom[profile.collection] = ordered;
+
+    for (const entry of ordered) {
+      const path = customTypePath(profile, entry.data);
+      hrefs.set(`${profile.collection}/${entry.data.slug}`, path);
+      routes.push({ kind: "custom", path, entry, profile });
+    }
+
+    if (profile.archive.kind !== "archive") continue;
+    const base = customTypeArchivePath(profile);
+    const first = paginate(ordered, {
+      page: 1,
+      pageSize: permalinks.postsPerPage,
+    });
+    for (let number = 1; number <= first.pageCount; number += 1)
+      routes.push({
+        kind: "custom-archive",
+        path: paginatedPath(base, number),
+        base: paginatedPath(base, 1),
+        title: profile.archive.title,
+        page: paginate(ordered, {
+          page: number,
+          pageSize: permalinks.postsPerPage,
+        }),
+        profile,
+      });
+  }
+
   // Two routes, one path: the collision every static host resolves silently
   // by serving one of them.
-  const claimed = new Map<string, SiteRoute<Post, Page>>();
+  const claimed = new Map<string, SiteRoute<Post, Page, Custom>>();
   for (const route of routes) {
     const key = routeKey(route.path);
     const other = claimed.get(key);
@@ -372,6 +515,8 @@ export function resolveSiteRoutes<
     authorOf: (slug) => authorsBySlug.get(slug),
     categoryOf: (slug) => categoriesBySlug.get(slug),
     tagOf: (slug) => tagsBySlug.get(slug),
+    custom: routedCustom,
+    postTypes,
   };
 }
 

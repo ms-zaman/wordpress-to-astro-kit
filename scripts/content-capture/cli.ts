@@ -24,6 +24,8 @@ import {
 } from "../site-map-audit/fetch.ts";
 import { capturePostType, writeCapture } from "./capture.ts";
 import { WordPressRest } from "./rest.ts";
+import { classifyTypes, ofCapability } from "../custom-types/capability.ts";
+import { migration } from "../../migration.config.ts";
 import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
@@ -116,6 +118,66 @@ if (command === "census") {
         "  this kit came from had recorded its whole blog as blocked, and 251 of its\n" +
         "  278 posts were public.\n",
     );
+  // ---------------------------------------------------------------------
+  // What this kit is configured to do with each of them.
+  //
+  // The important row is `unconfigured`: REST found a content type and nobody
+  // has decided how it should be published. Reporting "0 custom types" or
+  // saying nothing would read as "there is nothing here", when what is true is
+  // "there is something here and it is waiting for a decision".
+  const capabilities = classifyTypes(types, migration.postTypes);
+  const unconfigured = ofCapability(capabilities, "unconfigured");
+  const configured = ofCapability(capabilities, "configured");
+  const withheld = ofCapability(capabilities, "withheld");
+
+  process.stdout.write("\n  THIS KIT'S CAPABILITY\n");
+  for (const row of capabilities) {
+    if (row.capability === "internal") continue;
+    const label =
+      row.capability === "core"
+        ? "core            "
+        : row.capability === "configured"
+          ? `configured      `
+          : row.capability === "withheld"
+            ? "withheld        "
+            : "UNCONFIGURED    ";
+    process.stdout.write(
+      `  ${label}${row.type.name.padEnd(20)}` +
+        `${row.collection === undefined ? "" : `→ content/${row.collection}/`}\n`,
+    );
+    if (row.unroutableTaxonomies.length > 0)
+      process.stdout.write(
+        `                  ⚠ taxonomies ${row.unroutableTaxonomies.join(", ")} — ` +
+          "no archive is published for these\n",
+      );
+  }
+
+  const internalCount = ofCapability(capabilities, "internal").length;
+  process.stdout.write(
+    `\n  ${configured.length} configured, ${withheld.length} withheld, ` +
+      `${unconfigured.length} unconfigured, ${internalCount} internal to WordPress.\n`,
+  );
+
+  if (unconfigured.length > 0) {
+    process.stdout.write(
+      `\n  ${unconfigured.length} type(s) have no profile: ` +
+        `${unconfigured.map((row) => row.type.name).join(", ")}.\n\n` +
+        "  This is a DECISION WAITING, not a gap in the tooling and not an empty\n" +
+        "  site. Nothing routes a type the kit was not told about, because\n" +
+        "  nothing about a type says whether it should be a public URL. Add a\n" +
+        "  profile to `postTypes` in migration.config.ts:\n\n" +
+        `    { name: "${unconfigured[0]!.type.name}",\n` +
+        `      collection: "${unconfigured[0]!.type.name}s",\n` +
+        `      restBase: "${unconfigured[0]!.type.restBase}",\n` +
+        `      permalink: "/${unconfigured[0]!.type.name}s/%postname%/",\n` +
+        "      published: true,\n" +
+        '      archive: { kind: "none" },\n' +
+        "      taxonomies: { attached: [], archives: false } }\n\n" +
+        "  …or decide it should not be migrated, and record that decision where\n" +
+        "  your project records decisions.\n",
+    );
+  }
+
   process.stdout.write(
     "\n  Next: `content:capture --type <name> --limit 5` for a first look at one.\n",
   );

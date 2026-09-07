@@ -68,7 +68,17 @@ export type ExclusionReason =
    * REMAPPING, not a withholding, and it is listed as an exclusion only
    * because the naive `slug -> permalink` expectation does not hold for it.
    */
-  | "routed-elsewhere";
+  | "routed-elsewhere"
+  /**
+   * The entry belongs to a post type whose profile says `published: false`.
+   *
+   * Different from having no profile at all, and the difference is the point:
+   * a profile with `published: false` says "this type is known, its entries
+   * are content, and they are deliberately withheld". A type with NO profile
+   * is not withheld — it is unconfigured, and `content:capture census` reports
+   * that separately, because nobody has decided anything about it yet.
+   */
+  | "type-not-published";
 
 export interface Exclusion {
   readonly id: ContentId;
@@ -129,10 +139,19 @@ export interface IntegrityReport {
   readonly emitted: readonly ContentId[];
   readonly excluded: readonly ExcludedRecord[];
   readonly findings: readonly IntegrityFinding[];
-  readonly counts: Readonly<Record<ContentKind | "total", number>>;
+  /** Emitted entries per collection, plus `total`. Keys grow with the config. */
+  readonly counts: Readonly<Record<string, number>>;
 }
 
-const emptyCounts = (): Record<ContentKind | "total", number> => ({
+/**
+ * Counts start at the core collections and GROW.
+ *
+ * A fixed shape was wrong the moment collections became configuration: a
+ * custom type's collection name is not known here, and incrementing a key that
+ * does not exist yields NaN rather than 1 — a count that reads as a number and
+ * is not one.
+ */
+const emptyCounts = (): Record<string, number> => ({
   posts: 0,
   pages: 0,
   categories: 0,
@@ -203,7 +222,7 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
       }
       emitted.push(intent.id);
       const kind = kindOf(intent.id);
-      if (kind !== undefined) counts[kind] += 1;
+      if (kind !== undefined) counts[kind] = (counts[kind] ?? 0) + 1;
       counts.total += 1;
       continue;
     }
@@ -301,6 +320,40 @@ export function findingsOfKind(
   kind: FindingKind,
 ): IntegrityFinding[] {
   return findings.filter((finding) => finding.kind === kind);
+}
+
+/**
+ * Entries of a post type whose profile withholds it.
+ *
+ * Derived from the profile rather than hand-listed, for the same reason the
+ * locale rule is: nobody maintains a list of every entry of a withheld type.
+ * Each entry it covers is still named in the report — a type that is not
+ * published is not a type that is forgotten.
+ */
+export function unpublishedTypeExclusions(
+  intended: readonly IntendedContent[],
+  withheldCollections: readonly { name: string; type: string }[],
+): Exclusion[] {
+  const byCollection = new Map(
+    withheldCollections.map((one) => [one.name, one.type]),
+  );
+  const excluded: Exclusion[] = [];
+  for (const intent of intended) {
+    const collection = kindOf(intent.id);
+    if (collection === undefined) continue;
+    const type = byCollection.get(collection);
+    if (type === undefined) continue;
+    excluded.push({
+      id: intent.id,
+      reason: "type-not-published",
+      detail:
+        `post type "${type}" has a profile in migration.config.ts with ` +
+        `published: false. Its entries are captured, validated and named here, ` +
+        `and no page is produced for them. Set published: true to publish the ` +
+        `type, or delete the profile if the type should not be migrated at all.`,
+    });
+  }
+  return excluded;
 }
 
 /**

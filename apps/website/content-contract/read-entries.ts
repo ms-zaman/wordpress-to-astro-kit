@@ -11,11 +11,12 @@
 // does not duplicate it; every field it does read is parsed with the same
 // schema primitives the content model uses, so a value it cannot understand
 // is REJECTED and reported rather than normalised.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { z } from "astro/zod";
 
+import { migration } from "../../../migration.config.ts";
 import { clusterKey, localeCode, slug } from "../src/content-model/shared.ts";
 import {
   validateClusters,
@@ -53,10 +54,73 @@ interface EntrySetSource {
   readonly extra: "pageHierarchy" | "postTaxonomy";
 }
 
+/**
+ * Every directory of entries this content tree is allowed to have.
+ *
+ * The two core sets, plus one per configured custom post type. Built from
+ * `migration.config.ts` rather than written out, so a type added there is
+ * validated here without a second edit — and, more importantly, so that
+ * REMOVING a profile leaves its directory unclaimed and therefore reported.
+ */
 const ENTRY_SETS: readonly EntrySetSource[] = [
   { collection: "pages", dir: "pages", extra: "pageHierarchy" },
   { collection: "posts", dir: "posts", extra: "postTaxonomy" },
+  ...migration.postTypes.map((profile) => ({
+    collection: profile.collection,
+    dir: profile.collection,
+    // A custom type carries no page hierarchy and no post taxonomy fields; its
+    // identity is the shared shape and nothing more.
+    extra: "none" as const,
+  })),
 ];
+
+/**
+ * Entry directories that no collection claims.
+ *
+ * ## The hole this closes
+ *
+ * Delete a custom type's profile and its `content/<collection>/` directory
+ * stays behind, full of entries. Nothing defines a collection for it any more,
+ * so `getCollection` never yields those entries, so they never enter the
+ * deployment manifest's `intended` list — and `content:integrity` reports zero
+ * findings, because the join has nothing on either side.
+ *
+ * That is the same failure the integrity gate was built to end, one level
+ * upstream: a gate cannot miss content it was never shown. Measured — renaming
+ * one profile left three entries orphaned and the whole ladder green.
+ *
+ * So the FILESYSTEM is the authority here. This walks `content/` and reports
+ * any directory holding entry files that no set in `ENTRY_SETS` claims.
+ */
+export function unclaimedEntryDirectories(
+  contentRoot: string,
+): ValidationIssue[] {
+  const claimed = new Set(ENTRY_SETS.map((set) => set.dir));
+  const unclaimed: ValidationIssue[] = [];
+  let names: string[];
+  try {
+    names = readdirSync(contentRoot);
+  } catch {
+    return [];
+  }
+  for (const name of names) {
+    if (claimed.has(name)) continue;
+    const directory = path.join(contentRoot, name);
+    if (!statSync(directory).isDirectory()) continue;
+    const files = listEntryFiles(directory);
+    if (files.length === 0) continue;
+    unclaimed.push({
+      code: "entry-directory-unclaimed",
+      message:
+        `content/${name}/ holds ${files.length} entr${files.length === 1 ? "y" : "ies"} ` +
+        `and no collection claims it. Nothing loads them, so nothing can report ` +
+        `them missing either — not the build, not the manifest, not ` +
+        `content:integrity. Add a profile for it to \`postTypes\` in ` +
+        `migration.config.ts, or delete the directory.`,
+    });
+  }
+  return unclaimed;
+}
 
 const identityShape = {
   slug,
@@ -81,6 +145,11 @@ const EXTRAS = {
       categories: z.array(slug).min(1),
       tags: z.array(z.string().min(1)).default([]),
     }),
+  },
+  /** A custom post type: the shared identity and nothing more. */
+  none: {
+    keys: [] as const,
+    schema: z.strictObject({ ...identityShape }),
   },
 } as const;
 
@@ -270,6 +339,7 @@ export function validateContentTree(
   const { entries, problems } = readEntries(contentRoot);
 
   const issues = [
+    ...unclaimedEntryDirectories(contentRoot),
     ...validateClusters(entries),
     ...validatePageParents(
       entries

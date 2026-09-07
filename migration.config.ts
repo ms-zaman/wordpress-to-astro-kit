@@ -93,6 +93,97 @@ export interface RoutePair {
 }
 
 /**
+ * How a WordPress post type is published by this build.
+ *
+ * ## Why a profile and not a heuristic
+ *
+ * WordPress has two built-in content types and an unbounded number of custom
+ * ones, and NOTHING about a custom type tells you how it should be published.
+ * `product` might be a public catalogue with an archive at `/products/`, an
+ * internal record with no public page at all, or a type whose URLs depend on a
+ * taxonomy this kit cannot route. The REST API reports that the type exists; it
+ * does not report which of those it is, and guessing is how a migration
+ * publishes a URL nobody chose.
+ *
+ * So a custom type is published only when a profile says so, and the profile
+ * says exactly what. A type discovered by `content:census` with no profile is
+ * REPORTED — never silently dropped, and never silently routed.
+ */
+export interface PostTypeProfile {
+  /** The WordPress post type key, as `wp/v2/types` reports it: `product`. */
+  readonly name: string;
+  /**
+   * The content directory and Astro collection: `content/<collection>/`.
+   *
+   * Separate from `name` because a type key is WordPress's and a directory
+   * name is yours — and because two WordPress installs have used the same key
+   * for different things.
+   */
+  readonly collection: string;
+  /** The REST route segment, which is NOT always the type name. */
+  readonly restBase: string;
+  /**
+   * The URL pattern, in WordPress's own permalink syntax.
+   *
+   * Tokens this kit can expand for a custom type: `%postname%`, `%year%`,
+   * `%monthnum%`, `%day%`. Anything else fails the build by name — see
+   * `PATTERN_TOKENS` in `apps/website/src/routing/permalink.ts`. In particular
+   * `%category%` is refused, because a taxonomy-dependent URL needs taxonomy
+   * routing this kit does not have, and inventing one URL out of several
+   * possible terms would publish a link that WordPress never served.
+   */
+  readonly permalink: string;
+  /**
+   * False for a type you capture but do not publish.
+   *
+   * Not the same as omitting the profile. A profile with `published: false`
+   * says "this type is known, its entries are content, and they are
+   * deliberately withheld" — and `content:integrity` reports each one by name
+   * rather than letting it disappear.
+   */
+  readonly published: boolean;
+  readonly archive: PostTypeArchive;
+  readonly taxonomies: PostTypeTaxonomies;
+}
+
+/**
+ * Whether the type has a listing page of its own.
+ *
+ * A custom type does not get an archive because it exists — WordPress's own
+ * `has_archive` defaults to false, and a listing nobody asked for is a URL
+ * nobody asked for.
+ */
+export type PostTypeArchive =
+  | { readonly kind: "none" }
+  | {
+      /** A listing at `path`, paginated with the same segment as the blog. */
+      readonly kind: "archive";
+      readonly path: string;
+      /** Shown as the listing's heading. */
+      readonly title: string;
+    };
+
+export interface PostTypeTaxonomies {
+  /**
+   * The taxonomy names attached to this type, as the census reported them.
+   *
+   * Recorded even when nothing routes them: the terms are real content, they
+   * are stored on the entry, and a later reader needs to know they were seen.
+   */
+  readonly attached: readonly string[];
+  /**
+   * Whether this build must publish archives for those taxonomies.
+   *
+   * **`true` is refused today**, loudly, at build time. The kit's taxonomy
+   * routing is written against posts specifically — `categories` and `tags`
+   * registries, filtered over the posts collection — and pretending a custom
+   * type's terms route would publish archives whose contents nobody checked.
+   * The boundary is stated rather than approximated.
+   */
+  readonly archives: boolean;
+}
+
+/**
  * How the source site's HTML has to be read.
  *
  * **WordPress is not one editor.** The same CMS renders through Gutenberg,
@@ -161,6 +252,15 @@ export interface MigrationConfig {
    */
   readonly routePairs: readonly RoutePair[];
   readonly sourceMarkup: SourceMarkupConfig;
+  /**
+   * Custom post types this build publishes, one profile each.
+   *
+   * Empty is the correct starting state: `content:census` lists what the source
+   * site has, and each type earns a profile when somebody decides how it should
+   * be published. A discovered type with no profile is reported as
+   * unconfigured — that is a decision waiting, not a gap in the tooling.
+   */
+  readonly postTypes: readonly PostTypeProfile[];
 }
 
 export const migration: MigrationConfig = {
@@ -194,4 +294,39 @@ export const migration: MigrationConfig = {
     hiddenEverywhere: [],
     notPartOfThePage: [],
   },
+  // Three profiles ship, and they are FIXTURES rather than a claim about your
+  // site: they exist so the custom-type path is exercised by the kit's own
+  // ladder on every build instead of only in a unit test. `product` and
+  // `portfolio` are the two ordinary shapes (with and without a listing);
+  // `internal-note` is the withheld case. Delete all three when you replace
+  // the sample content, the same as every other `source.system: sample` entry.
+  postTypes: [
+    {
+      name: "product",
+      collection: "products",
+      restBase: "product",
+      permalink: "/products/%postname%/",
+      published: true,
+      archive: { kind: "archive", path: "/products/", title: "Products" },
+      taxonomies: { attached: [], archives: false },
+    },
+    {
+      name: "portfolio",
+      collection: "portfolio",
+      restBase: "portfolio",
+      permalink: "/portfolio/%postname%/",
+      published: true,
+      archive: { kind: "none" },
+      taxonomies: { attached: [], archives: false },
+    },
+    {
+      name: "internal-note",
+      collection: "internal-notes",
+      restBase: "internal-note",
+      permalink: "/internal-notes/%postname%/",
+      published: false,
+      archive: { kind: "none" },
+      taxonomies: { attached: [], archives: false },
+    },
+  ],
 };

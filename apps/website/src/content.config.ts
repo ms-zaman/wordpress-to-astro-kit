@@ -5,6 +5,8 @@
 import { defineCollection } from "astro:content";
 import { file, glob } from "astro/loaders";
 
+import { migration } from "../../../migration.config.ts";
+import { customTypeSchema } from "./content-model/custom-type.ts";
 import { navigationSchema } from "./content-model/navigation.ts";
 import { pageSchema } from "./content-model/page.ts";
 import { postSchema } from "./content-model/post.ts";
@@ -114,7 +116,32 @@ const seoOverride = defineCollection({
   schema: seoOverrideSchema,
 });
 
+/**
+ * One collection per PUBLISHED custom post type, from `migration.config.ts`.
+ *
+ * Built from the profiles rather than written out, because the whole point of
+ * a profile is that adding a type is a configuration change. Unpublished types
+ * still get a collection: their entries are content, they are validated, they
+ * are named in the deployment manifest as intended, and `content:integrity`
+ * reports each one as withheld. A type that is not routed is not a type that
+ * is forgotten.
+ */
+const customTypeCollections = Object.fromEntries(
+  migration.postTypes.map((profile) => [
+    profile.collection,
+    defineCollection({
+      loader: glob({
+        pattern: MARKDOWN_ENTRIES,
+        base: `${CONTENT}/${profile.collection}`,
+        generateId: idFromPath,
+      }),
+      schema: customTypeSchema,
+    }),
+  ]),
+);
+
 export const collections = {
+  ...customTypeCollections,
   pages,
   posts,
   authors,

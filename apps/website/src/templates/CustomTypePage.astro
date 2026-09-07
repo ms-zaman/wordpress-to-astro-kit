@@ -1,0 +1,101 @@
+---
+// One entry of a custom post type.
+//
+// ## Why a generic template, and where it stops
+//
+// A custom type is a WordPress type with a different name: a title, a body, a
+// date, some terms. Rendering it needs nothing the page template does not
+// already do, and demanding a hand-written component per type would make
+// "publish a custom type" a code change rather than a configuration one.
+//
+// So this is the FLOOR. It renders what `customTypeSchema` can represent and
+// nothing else, which is exactly the set of fields the content contract will
+// accept — a type whose fields this schema cannot hold fails validation by
+// name rather than rendering a page quietly missing them.
+//
+// The ceiling is `custom-type-templates.ts`: a collection with a component of
+// its own gets it, and this file stops being involved. That seam exists
+// because a product catalogue eventually wants a price beside the title, and
+// the honest way to get one is a schema and a template of your own — not a
+// generic renderer that grows a field per site.
+import { render } from "astro:content";
+import { Heading, Section, Text } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import Prose from "../components/content/Prose.astro";
+import { trailCrumbs } from "../content-index/wayfinding.ts";
+import { prepareBody } from "../rendering/body.ts";
+import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
+import { truncateAtWord } from "../rendering/portable-body.ts";
+import { firstProseParagraph, textOf } from "../rendering/post-view.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import type { CustomRoute } from "../routing/resolver.ts";
+import type { CustomEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: CustomRoute<CustomEntry>;
+  site: SiteData;
+}
+
+const { route, site } = Astro.props;
+const { entry, profile } = route;
+const { data } = entry;
+
+// A breadcrumb back to the type's own listing, when it HAS one. A crumb
+// pointing at a listing the profile declares no archive for would be a link
+// into a 404 — the archive setting is read, not assumed.
+const crumbs = trailCrumbs(
+  profile.archive.kind === "archive"
+    ? [{ label: profile.archive.title, href: profile.archive.path }]
+    : [],
+  data.title,
+);
+
+const markdown = data.bodyFormat === "markdown";
+const rendered = markdown ? await render(entry as never) : undefined;
+const html = markdown ? "" : prepareBody(entry.body ?? "");
+
+const seo = seoMetadata(
+  {
+    title: `${data.title} – ${SITE_NAME}`,
+    description: truncateAtWord(
+      data.excerpt ? textOf(data.excerpt) : firstProseParagraph(entry.body),
+      META_DESCRIPTION_MAX,
+    ),
+  },
+  findOverride(site.overrides, route.path, data.locale),
+);
+
+// Terms are printed as text, never as links. The kit publishes no taxonomy
+// archive for a custom type — `migration.config.ts` refuses a profile that
+// claims otherwise — so linking them would manufacture URLs that do not exist.
+const termLines = Object.entries(data.terms ?? {})
+  .filter(([, values]) => values.length > 0)
+  .map(([taxonomy, values]) => `${taxonomy}: ${values.join(", ")}`);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={data.locale}
+  crumbs={crumbs}
+>
+  <Section gap="sm">
+    <Breadcrumbs crumbs={crumbs} />
+    <Heading as="h1" size="xl">{data.title}</Heading>
+    {
+      termLines.length > 0 && (
+        <Text tone="muted" size="sm">
+          {termLines.join(" · ")}
+        </Text>
+      )
+    }
+    <Prose>
+      {rendered ? <rendered.Content /> : <Fragment set:html={html} />}
+    </Prose>
+  </Section>
+</BaseLayout>

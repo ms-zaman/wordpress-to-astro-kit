@@ -13,7 +13,10 @@ import {
 } from "../deployment/manifest.ts";
 import { parseRedirectMap } from "../deployment/redirects.ts";
 import { processEnvironment } from "../deployment/site-environment.ts";
-import { identityOf } from "../routing/route-identity.ts";
+import {
+  customArchiveIdentity,
+  identityOf,
+} from "../routing/route-identity.ts";
 import { entryId, rowId } from "../deployment/content-identity.ts";
 import type { IntendedContent } from "../deployment/content-integrity.ts";
 import { loadSiteData } from "../routing/site-routes.ts";
@@ -23,6 +26,8 @@ import {
   categoryPath,
   tagPath,
   authorPath,
+  customTypePath,
+  customTypeArchivePath,
 } from "../routing/permalink.ts";
 
 const redirectMap = parseRedirectMap(redirectsJson);
@@ -66,6 +71,11 @@ export const GET: APIRoute = async () => {
       routed: site.categories.length,
     },
     { name: "tags", entries: site.tags.length, routed: site.tags.length },
+    ...site.postTypes.map((profile) => ({
+      name: profile.collection,
+      entries: (site.allCustom[profile.collection] ?? []).length,
+      routed: (site.custom[profile.collection] ?? []).length,
+    })),
     { name: "navigation", entries: navigation.length, routed: 0 },
     { name: "seoOverride", entries: site.overrides.length, routed: 0 },
   ];
@@ -104,13 +114,38 @@ export const GET: APIRoute = async () => {
       id: rowId("authors", row.slug),
       expectedRoute: safePath(() => authorPath(row.nicename ?? row.slug)),
     })),
+    // Custom post types. Every profile's entries, in EVERY locale and whether
+    // or not the profile publishes them — which is the whole point: a type the
+    // build withholds has to be NAMED as intended, or `content:integrity`
+    // stays green because the entries never entered the inventory it joins on.
+    ...site.postTypes.flatMap((profile) => [
+      ...(site.allCustom[profile.collection] ?? []).map((entry) => ({
+        id: entryId(profile.collection, entry.data.slug, entry.data.locale),
+        expectedRoute: profile.published
+          ? safePath(() => customTypePath(profile, entry.data))
+          : undefined,
+      })),
+      // The listing, when the profile declares one. Structural like the posts
+      // index: derived from the whole collection, not from one entry.
+      ...(profile.published && profile.archive.kind === "archive"
+        ? [
+            {
+              id: customArchiveIdentity(profile.collection),
+              expectedRoute: safePath(() => customTypeArchivePath(profile)),
+            },
+          ]
+        : []),
+    ]),
   ];
 
   const manifest = buildManifest({
     resolved: site.routes.map((route) => ({
       path: route.path,
       kind: route.kind,
-      page: route.kind === "archive" ? route.page.page : undefined,
+      page:
+        route.kind === "archive" || route.kind === "custom-archive"
+          ? route.page.page
+          : undefined,
       entry: identityOf(route),
     })),
     // `/` is static, so the front page is not a resolved route — its identity
@@ -122,6 +157,13 @@ export const GET: APIRoute = async () => {
     collections,
     intended,
     locale: site.locale,
+    postTypes: site.postTypes.map((profile) => ({
+      name: profile.name,
+      collection: profile.collection,
+      published: profile.published,
+      archive: profile.archive.kind,
+      taxonomies: profile.taxonomies.attached,
+    })),
     environment: readEnvironment(processEnvironment()),
   });
 

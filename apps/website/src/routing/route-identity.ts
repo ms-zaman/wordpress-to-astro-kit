@@ -14,6 +14,7 @@ import {
 } from "../deployment/content-identity.ts";
 import type {
   ArchiveRoute,
+  CustomEntryData,
   EntryLike,
   PageEntryData,
   PostEntryData,
@@ -63,16 +64,38 @@ function archiveIdentity<
   }
 }
 
+/**
+ * A custom type's listing, which lists a whole collection.
+ *
+ * Structural for the same reason the posts index is: it is derived from every
+ * entry of the type, not from one of them. Named per collection so two
+ * listings are two identities.
+ */
+export function customArchiveIdentity(collection: string): ContentId {
+  return `@archive/${collection}`;
+}
+
 /** The content identity behind one resolved route. */
 export function identityOf<
   Post extends EntryLike<PostEntryData>,
   Page extends EntryLike<PageEntryData>,
->(route: SiteRoute<Post, Page>): ContentId {
+  Custom extends EntryLike<CustomEntryData>,
+>(route: SiteRoute<Post, Page, Custom>): ContentId {
   switch (route.kind) {
     case "page":
       return entryId("pages", route.entry.data.slug, route.entry.data.locale);
     case "post":
       return entryId("posts", route.entry.data.slug, route.entry.data.locale);
+    case "custom":
+      // The COLLECTION, so the identity matches the one the content tree
+      // produces — `products/analyser@en`, never `product/analyser@en`.
+      return entryId(
+        route.profile.collection,
+        route.entry.data.slug,
+        route.entry.data.locale,
+      );
+    case "custom-archive":
+      return customArchiveIdentity(route.profile.collection);
     case "archive":
       return archiveIdentity(route);
   }

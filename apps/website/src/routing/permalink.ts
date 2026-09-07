@@ -5,7 +5,11 @@
 // publishes is composed here and nowhere else, so changing a pattern changes
 // every link, canonical, sitemap row and redirect target together — and no
 // route file has to be renamed to preserve a live site's URLs.
-import { migration, type Permalinks } from "../../../../migration.config.ts";
+import {
+  migration,
+  type Permalinks,
+  type PostTypeProfile,
+} from "../../../../migration.config.ts";
 import { routeKey, sitePath } from "./url-shape.ts";
 
 export const permalinks: Permalinks = migration.permalinks;
@@ -25,6 +29,30 @@ export const PATTERN_TOKENS: Readonly<
   tag: ["slug"],
   author: ["nicename"],
 };
+
+/**
+ * The tokens a CUSTOM post type's pattern may use.
+ *
+ * A shorter list than `post`'s, and the two omissions are the point:
+ *
+ *   `%category%` — a taxonomy-dependent URL needs taxonomy routing, and this
+ *   kit routes taxonomies for posts only. An entry usually has SEVERAL terms,
+ *   so expanding it would pick one and publish a URL WordPress never served.
+ *   Refused by name rather than approximated.
+ *
+ *   `%author%` — a custom type need not be attached to the author registry at
+ *   all, and expanding an author into a URL for a type that has none would
+ *   fail at build time on some entries and not others.
+ *
+ * What is here is what has been exercised end to end: a fixed prefix, the post
+ * name, and the date parts.
+ */
+export const CUSTOM_TYPE_TOKENS: readonly string[] = [
+  "postname",
+  "year",
+  "monthnum",
+  "day",
+];
 
 /**
  * Expand a pattern with the values a route supplies. Throws on a token the
@@ -123,6 +151,140 @@ export function tagPath(slug: string): string {
 
 export function authorPath(nicename: string): string {
   return expandPattern(permalinks.author, { nicename });
+}
+
+/**
+ * Everything wrong with one custom post type's profile.
+ *
+ * Separate from `permalinkProblems` because these are per-profile and the
+ * caller reports them by type name — but the same rule applies: a pattern this
+ * kit cannot expand is a build failure, never a route it invents.
+ */
+export function postTypeProblems(profile: PostTypeProfile): string[] {
+  const problems: string[] = [];
+  const where = `postTypes["${profile.name}"]`;
+
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(profile.collection))
+    problems.push(
+      `${where}.collection must be a lowercase directory name: got "${profile.collection}"`,
+    );
+  if (!profile.permalink.startsWith("/"))
+    problems.push(
+      `${where}.permalink must start with "/": got "${profile.permalink}"`,
+    );
+
+  const tokens = [...profile.permalink.matchAll(TOKEN)].map(
+    (match) => match[1] ?? "",
+  );
+  for (const token of tokens)
+    if (!CUSTOM_TYPE_TOKENS.includes(token))
+      problems.push(
+        `${where}.permalink uses %${token}%, which this kit cannot expand for a ` +
+          `custom type. Supported: ${CUSTOM_TYPE_TOKENS.map((one) => `%${one}%`).join(", ")}.` +
+          (token === "category" || token === "tag"
+            ? " A taxonomy-dependent URL needs taxonomy routing, which this kit " +
+              "has for posts only — see the capability boundary in " +
+              "scripts/content-integrity/README.md."
+            : ""),
+      );
+  if (!tokens.includes("postname"))
+    problems.push(
+      `${where}.permalink has no %postname%, so every entry of the type would ` +
+        `share one URL`,
+    );
+
+  if (
+    profile.archive.kind === "archive" &&
+    !profile.archive.path.startsWith("/")
+  )
+    problems.push(`${where}.archive.path must start with "/"`);
+
+  if (profile.taxonomies.archives)
+    problems.push(
+      `${where}.taxonomies.archives is true, and this kit cannot publish ` +
+        `taxonomy archives for a custom type. Its taxonomy routing is written ` +
+        `against posts — the categories and tags registries, filtered over the ` +
+        `posts collection. Set it to false: the attached taxonomies are still ` +
+        `recorded and the terms still travel on each entry, but no archive is ` +
+        `published for them. Claiming otherwise would ship listings nobody ` +
+        `checked.`,
+    );
+
+  if (!profile.published && profile.archive.kind === "archive")
+    problems.push(
+      `${where} is not published but declares an archive. A listing of pages ` +
+        `that do not exist is a page of dead links.`,
+    );
+
+  return problems;
+}
+
+/** Every profile's problems, named by type, for one message at build time. */
+export function postTypeProfileProblems(
+  profiles: readonly PostTypeProfile[] = migration.postTypes,
+): string[] {
+  const problems: string[] = [];
+  const seenCollections = new Map<string, string>();
+  const seenNames = new Set<string>();
+
+  for (const profile of profiles) {
+    if (seenNames.has(profile.name))
+      problems.push(`postTypes declares "${profile.name}" more than once`);
+    seenNames.add(profile.name);
+
+    const owner = seenCollections.get(profile.collection);
+    if (owner !== undefined)
+      problems.push(
+        `postTypes["${profile.name}"] and postTypes["${owner}"] both use ` +
+          `collection "${profile.collection}". Two types in one directory cannot ` +
+          `be told apart, and one would silently overwrite the other's identity.`,
+      );
+    seenCollections.set(profile.collection, profile.name);
+
+    if (RESERVED_COLLECTIONS.has(profile.collection))
+      problems.push(
+        `postTypes["${profile.name}"] uses collection "${profile.collection}", ` +
+          `which is one of the kit's own. Choose another directory name.`,
+      );
+
+    problems.push(...postTypeProblems(profile));
+  }
+  return problems;
+}
+
+/** Collection names the kit's core content model already owns. */
+const RESERVED_COLLECTIONS = new Set([
+  "posts",
+  "pages",
+  "authors",
+  "categories",
+  "tags",
+  "navigation",
+  "seo",
+  "config",
+]);
+
+/** The URL one custom-type entry is published at. */
+export function customTypePath(
+  profile: PostTypeProfile,
+  entry: { readonly slug: string; readonly publishedAt?: string },
+): string {
+  const [year, month, day] = (entry.publishedAt ?? "").split("-");
+  return expandPattern(profile.permalink, {
+    postname: entry.slug,
+    year,
+    monthnum: month,
+    day,
+  });
+}
+
+/** The URL a custom type's listing lives at, when it has one. */
+export function customTypeArchivePath(profile: PostTypeProfile): string {
+  if (profile.archive.kind !== "archive")
+    throw new Error(
+      `postTypes["${profile.name}"] has no archive, so it has no archive path.`,
+    );
+  return sitePath(profile.archive.path);
 }
 
 /** Where the posts listing lives. */

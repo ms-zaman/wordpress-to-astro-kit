@@ -12,7 +12,9 @@ export interface ValidationIssue {
     | "post-category-unknown"
     | "post-tag-unregistered"
     | "page-parent-unknown"
-    | "page-parent-cycle";
+    | "page-parent-cycle"
+    /** A content directory that no collection claims — see read-entries.ts. */
+    | "entry-directory-unclaimed";
   message: string;
 }
 
