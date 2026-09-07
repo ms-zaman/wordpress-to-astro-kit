@@ -63,6 +63,14 @@ jobs:
       - name: Build and build audit
         run: pnpm render:build-audit
 
+      # The one gate that reads BOTH sides of the build boundary. Every other
+      # check here reads one — the content contract never opens `dist/`, the
+      # build audit compares the manifest against the files, and both of those
+      # are outputs of the same build — so an entry the resolver dropped in
+      # between was invisible to all of them.
+      - name: Content integrity (content/ -> dist/, by identity)
+        run: pnpm content:integrity
+
       # Three audits over the `dist/` the step above produced. They read
       # emitted bytes and open no browser, so they belong here rather than in
       # the stage job.

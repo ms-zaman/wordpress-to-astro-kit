@@ -8,15 +8,41 @@ import { z } from "astro/zod";
 import localeRegistryData from "../../../../content/config/locales.json" with { type: "json" };
 import { migration } from "../../../../migration.config.ts";
 
+/**
+ * A locale code, in the form an `<html lang>` attribute takes.
+ *
+ * `language[-Script][-REGION]`: `en`, `bn`, `pt-BR`, `zh-Hans`, `en-GB`,
+ * `zh-Hant-TW`. This was `/^[a-z]{2}$/`, which is not a description of
+ * anything — it rejects `pt-BR`, `zh-Hans` and `en-GB`, three of the forms a
+ * WordPress site is most likely to publish, and a kit that cannot name a
+ * locale cannot route it, exclude it, or report on it honestly.
+ *
+ * This is deliberately NOT full BCP-47. Variants, extensions and private-use
+ * subtags are refused, because nothing in the kit does anything with them and
+ * accepting a tag it cannot act on is the same lie as a config field nothing
+ * reads. The kit still builds ONE locale at a time — see the route resolver —
+ * and widening this regex does not change that; it makes the one locale
+ * nameable.
+ *
+ * The underscore form is refused on purpose. WordPress stores `pt_BR` in
+ * `WPLANG` and serves `pt-BR` in `<html lang>`, and somebody will paste the
+ * first. Silently accepting it would put an invalid language tag in every
+ * page's markup, which no validator here would catch and every consumer would.
+ */
+const LOCALE_CODE =
+  /^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$/;
+
+const LOCALE_CODE_MESSAGE =
+  'locale code must be an HTML language tag: "en", "pt-BR", "zh-Hans", ' +
+  '"en-GB". WordPress\'s underscore form ("pt_BR") is not one — use the hyphen.';
+
 /** Locale registry — the single place the language set exists. */
 const localeRegistrySchema = z.strictObject({
   defaultLocale: z.string(),
   locales: z
     .array(
       z.strictObject({
-        code: z
-          .string()
-          .regex(/^[a-z]{2}$/, "locale code must be two lowercase letters"),
+        code: z.string().regex(LOCALE_CODE, LOCALE_CODE_MESSAGE),
         hreflang: z.array(z.string().min(2)).min(1),
         label: z.string().min(1),
       }),

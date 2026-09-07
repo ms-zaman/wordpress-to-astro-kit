@@ -7,6 +7,13 @@
 import process from "node:process";
 
 import { resolveMarkup, GUTENBERG, ELEMENTOR, PROFILES } from "../builders.ts";
+import {
+  isWholeWordAt,
+  minimumLength,
+  visibleLength,
+  MIN_LENGTH_DENSE,
+  MIN_LENGTH_SPARSE,
+} from "../script.ts";
 
 import {
   problemsOfKind,
@@ -484,6 +491,216 @@ check("a site adds its OWN sets on top of a profile", () => {
   const found = asked(html, { dropHidden: true, markup });
   assert(!found.has("theme-hidden"), "the full set is dropped");
   assert(found.has("two of three"), "a partial set still paints somewhere");
+});
+
+console.log("\nReconciliation is script-aware, not Latin-only");
+
+// The four cases below were MEASURED failing on the shipped code before
+// `script.ts` existed. Every one returned true — containment counting as
+// agreement — because no character of 会社, দাম or كتاب matches `[a-z0-9]`, so
+// every position read as a word boundary and the guard evaporated.
+const BOUNDARY_MUST_NOT_MATCH: readonly (readonly [string, string, string])[] =
+  [
+    ["latin", "$999.99/month", "$999.99/mo"],
+    ["japanese", "会社概要", "会社"],
+    ["bengali", "দামি", "দাম"],
+    ["arabic", "كتابي", "كتاب"],
+  ];
+
+for (const [script, corpus, key] of BOUNDARY_MUST_NOT_MATCH)
+  check(
+    `A PREFIX IS NOT A MATCH — ${script}: "${key}" inside "${corpus}"`,
+    () => {
+      assert(
+        !says(corpus, key),
+        `"${key}" must not count as said by "${corpus}" — it ends mid-word`,
+      );
+    },
+  );
+
+// The other half of the same rule. A guard that refuses everything is not a
+// guard, it is a broken tool that reports every string as a finding.
+const BOUNDARY_MUST_MATCH: readonly (readonly [string, string, string])[] = [
+  ["japanese, exact", "お問い合わせ", "お問い合わせ"],
+  ["japanese, delimited", "我々の 会社 について", "会社"],
+  ["bengali, delimited", "আমাদের দাম দেখুন", "দাম"],
+  ["arabic, delimited", "اشترِ كتاب اليوم", "كتاب"],
+  ["latin, punctuation after", "the price is $999.99/mo.", "$999.99/mo"],
+  ["mixed script", "価格は $99/month です", "$99/month"],
+];
+
+for (const [label, corpus, key] of BOUNDARY_MUST_MATCH)
+  check(`a delimited occurrence IS a match — ${label}`, () => {
+    assert(says(corpus, key), `"${key}" is said by "${corpus}"`);
+  });
+
+check("A COMBINING MARK CONTINUES A WORD", () => {
+  // The single most important character class here, and the one a rule written
+  // against letters and digits misses. In `দামি` the character after a match on
+  // `দাম` is the vowel sign `ি` — Unicode category Mc, not a letter. Without
+  // \p{M} the guard calls that a word boundary and matches a different word.
+  assert(
+    !isWholeWordAt("দামি", "দাম", 0),
+    "a following mark is not a boundary",
+  );
+  assert(isWholeWordAt("দাম দেখুন", "দাম", 0), "a following space is");
+});
+
+check("a mixed-script key is bounded on BOTH sides", () => {
+  // `ISO 27001認証` — Latin, digits and Han in one string, which is ordinary in
+  // Japanese marketing copy. It must not match inside a longer Han run.
+  assert(
+    !says("ISO 27001認証取得済み", "ISO 27001認証"),
+    "a Han character after the key continues the word",
+  );
+  assert(
+    says("当社は ISO 27001認証 を取得", "ISO 27001認証"),
+    "delimited, it matches",
+  );
+});
+
+console.log("\nShort is not the same as decorative");
+
+check("A TWO-CHARACTER CJK LABEL IS CONTENT, NOT A GLYPH", () => {
+  // Measured before this change: this exact page asked ONE string of three.
+  // 会社 and 採用 were discarded for being shorter than three, so the page was
+  // compared on a third of itself and the rest reported as matched.
+  const page = "<h2>会社</h2><a href='/careers'>採用</a><h2>お問い合わせ</h2>";
+  const keys = [...asked(page, { dropHidden: false }).keys()];
+  equal(keys.length, 3, `all three strings survive: ${JSON.stringify(keys)}`);
+  assert(keys.includes("会社"), "会社 — 'company'");
+  assert(keys.includes("採用"), "採用 — 'recruitment'");
+});
+
+check("a two-grapheme Bengali word is content", () => {
+  // `দাম` is 3 code points and TWO graphemes — a length rule written against
+  // either code units or code points gets this wrong in a different way. Under
+  // the old flat floor of three it was dropped by exactly one.
+  equal(visibleLength("দাম"), 2, "graphemes, not code points");
+  equal([..."দাম"].length, 3, "code points, for contrast");
+  equal(visibleLength("দামি"), 2, "and a vowel sign adds no grapheme");
+  const keys = [...asked("<h2>দাম</h2>", { dropHidden: false }).keys()];
+  assert(keys.includes("দাম"), "it survives the floor");
+});
+
+check("THE LATIN FLOOR IS UNCHANGED", () => {
+  // The whole point of a script-AWARE rule rather than a lower rule everywhere:
+  // Latin pages must reconcile exactly as they did, or every existing baseline
+  // moves for reasons nobody asked for.
+  equal(minimumLength("ok"), MIN_LENGTH_SPARSE, "latin keeps three");
+  equal(minimumLength("会社"), MIN_LENGTH_DENSE, "han gets two");
+  equal(minimumLength("দাম"), MIN_LENGTH_DENSE, "bengali gets two");
+  equal(minimumLength("كتاب"), MIN_LENGTH_DENSE, "arabic gets two");
+  equal(
+    minimumLength("ISO 27001認証"),
+    MIN_LENGTH_DENSE,
+    "mixed follows the dense half",
+  );
+  const glyphs = "<a href='/f'>f</a><a href='/g'>»</a><a href='/h'>ok</a>";
+  equal(
+    [...asked(glyphs, { dropHidden: false }).keys()].length,
+    0,
+    "icon glyphs and two-letter Latin labels are still dropped",
+  );
+});
+
+check("a lone grapheme is dropped in EVERY script", () => {
+  // Two, not one, everywhere: a single grapheme cannot be told apart from a
+  // decorative mark by any rule that does not know the font.
+  for (const glyph of ["f", "会", "দ", "ك", "×"])
+    equal(
+      [...asked(`<a href='/x'>${glyph}</a>`, { dropHidden: false }).keys()]
+        .length,
+      0,
+      `"${glyph}" alone is not evidence`,
+    );
+});
+
+console.log("\nUnicode normalization");
+
+check("NFD AND NFC ARE THE SAME STRING", () => {
+  // WordPress serves whatever the editor stored, and a source page authored on
+  // one system against a build authored on another must not differ over an
+  // invisible encoding choice.
+  const composed = "caf\u00e9";
+  const decomposed = "cafe\u0301";
+  assert(composed !== decomposed, "they really are different strings");
+  equal(normalise(composed), normalise(decomposed), "and one comparison key");
+  assert(
+    says(normalise(`the ${decomposed} is open`), normalise(composed)),
+    "so they match",
+  );
+});
+
+check("normalization is NFC, never NFKC", () => {
+  // NFKC would fold these to `A` and `1`. In Japanese and Korean content the
+  // full-width form is a real editorial choice, and folding it would hide a
+  // class of migration difference rather than reveal it.
+  assert(
+    normalise("Ａ") !== normalise("A"),
+    "full-width and half-width stay distinct",
+  );
+  assert(normalise("①") !== normalise("1"), "a circled digit is not a digit");
+});
+
+check("a grapheme is not a code point", () => {
+  // Three ways the two disagree, all of them in real content.
+  equal(visibleLength("দামি"), 2, "bengali cluster");
+  equal(visibleLength("cafe\u0301"), 4, "decomposed latin");
+  equal(visibleLength("👨\u200d👩\u200d👧"), 1, "a ZWJ family emoji");
+});
+
+console.log("\nEnd to end: the mutation the old reconciler waved through");
+
+check("A TRUNCATED JAPANESE HEADING IS A FINDING, NOT A MATCH", () => {
+  // The whole mission, stated as one reconciliation. The source page's heading
+  // is 会社概要 ("company profile"); this build shipped 会社 ("company"). That
+  // is a real, reader-visible difference — a heading that lost half its
+  // meaning — and the old reconciler reported it as MATCHED, because 会社 is
+  // contained in 会社概要 and no character of either matched `[a-z0-9]`, so
+  // the word-boundary guard never fired.
+  const result = reconcile([
+    pair(
+      "<h2>会社概要</h2><p>私たちについて</p>",
+      "<h2>会社</h2><p>私たちについて</p>",
+      "/about",
+    ),
+  ]);
+  const unpainted = problemsOfKind(result.problems, "unpainted");
+  assert(
+    unpainted.some((problem) => problem.key === "会社概要"),
+    `the source heading must be reported unpainted: ${JSON.stringify(unpainted.map((p) => p.key))}`,
+  );
+  assert(
+    result.problems.length > 0,
+    "and the run must fail rather than report agreement",
+  );
+});
+
+check("the same page, faithfully migrated, reconciles clean", () => {
+  // The other half. A guard that reports every non-Latin page as broken is not
+  // a fix, and this is the case that would catch that.
+  const result = reconcile([
+    pair(
+      "<h2>会社概要</h2><p>私たちについて</p>",
+      "<h2>会社概要</h2><p>私たちについて</p>",
+      "/about",
+    ),
+  ]);
+  equal(result.problems.length, 0, "no findings on an honest migration");
+});
+
+check("a truncated Bengali label is a finding", () => {
+  // `দাম` inside `দামি` — the combining-mark case, end to end.
+  const result = reconcile([
+    pair("<h2>দামি পরিকল্পনা</h2>", "<h2>দাম পরিকল্পনা</h2>", "/pricing"),
+  ]);
+  assert(
+    problemsOfKind(result.problems, "unpainted").some(
+      (problem) => problem.key === "দামি পরিকল্পনা",
+    ),
+    "the source label is reported unpainted",
+  );
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

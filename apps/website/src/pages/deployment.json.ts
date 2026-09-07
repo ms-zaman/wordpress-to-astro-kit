@@ -13,9 +13,36 @@ import {
 } from "../deployment/manifest.ts";
 import { parseRedirectMap } from "../deployment/redirects.ts";
 import { processEnvironment } from "../deployment/site-environment.ts";
+import { identityOf } from "../routing/route-identity.ts";
+import { entryId, rowId } from "../deployment/content-identity.ts";
+import type { IntendedContent } from "../deployment/content-integrity.ts";
 import { loadSiteData } from "../routing/site-routes.ts";
+import {
+  pagePath,
+  postPath,
+  categoryPath,
+  tagPath,
+  authorPath,
+} from "../routing/permalink.ts";
 
 const redirectMap = parseRedirectMap(redirectsJson);
+
+/**
+ * A permalink, or nothing when the pattern cannot be expanded for this entry.
+ *
+ * `expandPattern` throws on a token it has no value for — a post with no
+ * category under a `%category%` pattern, say. That is the right behaviour for
+ * a route, and the wrong behaviour here: this field only tells a reader where
+ * to LOOK for a missing page, and failing to compute a hint must never fail a
+ * build that would otherwise succeed.
+ */
+function safePath(compute: () => string): string | undefined {
+  try {
+    return compute();
+  } catch {
+    return undefined;
+  }
+}
 
 export const GET: APIRoute = async () => {
   const site = await loadSiteData();
@@ -43,14 +70,58 @@ export const GET: APIRoute = async () => {
     { name: "seoOverride", entries: site.overrides.length, routed: 0 },
   ];
 
+  // Everything `content/` intends to publish, named. This is the half the
+  // manifest never carried, and without it "did every entry arrive?" is not a
+  // question the artifact can answer — see deployment/content-integrity.ts.
+  //
+  // ALL locales, deliberately: an entry this build does not route is exactly
+  // the thing that used to vanish without trace, and it can only be reported
+  // as withheld if it is named as intended first.
+  const intended: IntendedContent[] = [
+    ...site.allPosts.map((post) => ({
+      id: entryId("posts", post.data.slug, post.data.locale),
+      expectedRoute: safePath(() =>
+        postPath(post.data, {
+          authorNicename: site.authorOf(post.data.author)?.nicename,
+        }),
+      ),
+    })),
+    ...site.allPages.map((page) => ({
+      id: entryId("pages", page.data.slug, page.data.locale),
+      // The parent chain is unknown for an entry the resolver never routed,
+      // so this hint is the flat path. It is a hint, not a claim.
+      expectedRoute: safePath(() => pagePath(page.data.slug, [])),
+    })),
+    ...site.categories.map((row) => ({
+      id: rowId("categories", row.slug),
+      expectedRoute: safePath(() => categoryPath(row.slug)),
+    })),
+    ...site.tags.map((row) => ({
+      id: rowId("tags", row.slug),
+      expectedRoute: safePath(() => tagPath(row.slug)),
+    })),
+    ...site.authors.map((row) => ({
+      id: rowId("authors", row.slug),
+      expectedRoute: safePath(() => authorPath(row.nicename ?? row.slug)),
+    })),
+  ];
+
   const manifest = buildManifest({
     resolved: site.routes.map((route) => ({
       path: route.path,
       kind: route.kind,
       page: route.kind === "archive" ? route.page.page : undefined,
+      entry: identityOf(route),
     })),
+    // `/` is static, so the front page is not a resolved route — its identity
+    // rides on the static route instead. Without this the home page entry
+    // would be reported as intended-but-never-emitted.
+    frontPageEntry:
+      site.frontPage === undefined ? undefined : identityOf(site.frontPage),
     redirects: redirectMap.rules,
     collections,
+    intended,
+    locale: site.locale,
     environment: readEnvironment(processEnvironment()),
   });
 

@@ -426,10 +426,16 @@ const { measure = true, variant = "default" } = Astro.props;
     background-color: var(--color-surface);
   }
 
-  .wpk-prose :global(.elementor-tab-title),
-  .wpk-prose :global(.eael-accordion-header) {
+  .wpk-prose :global(.elementor-tab-title) {
     font-weight: var(--font-weight-semibold);
   }
+
+  /* A PLUGIN's classes are not the kit's business. `.eael-accordion-header`
+     (Essential Addons for Elementor) used to sit on the line above — inherited
+     from the one site this kit was extracted from, and a selector no other
+     project has any reason to carry. Builders are declared configuration
+     (`migration.config.ts`'s `sourceMarkup`); the plugins layered on top of
+     them are yours, and their residue is styled in your own stylesheet. */
 
   /* An icon-font glyph with no font shipped is an empty element; hide it
      rather than leave an empty inline box in the text. */

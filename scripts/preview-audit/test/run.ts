@@ -84,6 +84,8 @@ const syntheticManifest = (): DeploymentManifest =>
       { name: "pages", entries: 2, routed: 2 },
       { name: "posts", entries: 2, routed: 2 },
     ],
+    intended: [],
+    locale: "en",
   });
 
 const write = (root: string, file: string, contents: string): void => {

@@ -8,6 +8,7 @@
 //
 // Pure — no `astro:content`, no filesystem. The Astro coupling lives in
 // `src/pages/deployment.json.ts`.
+import type { ContentId } from "./content-identity.ts";
 import { routeKey } from "../routing/url-shape.ts";
 
 export { routeKey };
@@ -50,6 +51,16 @@ export interface InventoryRoute {
   readonly origin: RouteOrigin;
   /** The route module that generates it, relative to the website package. */
   readonly source: string;
+  /**
+   * The content this route was generated FROM — `posts/hello-world@en`.
+   *
+   * Absent for a static route and a redirect, which come from a module and a
+   * rules file rather than from content. Present for everything else, and the
+   * content-integrity gate treats a missing one as a defect: a route derived
+   * from content that cannot name its source is a route nothing can prove
+   * arrived.
+   */
+  readonly entry?: ContentId;
 }
 
 /** A resolved route, as the route table describes one. */
@@ -58,12 +69,23 @@ export interface ResolvedRouteSummary {
   readonly kind: "page" | "post" | "archive";
   /** For an archive: which page of it. */
   readonly page?: number;
+  /** The content identity behind it. */
+  readonly entry?: ContentId;
 }
 
 export interface InventoryInput {
   readonly resolved: readonly ResolvedRouteSummary[];
   /** The redirect rules the build materialises, by source path. */
   readonly redirects?: readonly { readonly from: string }[];
+  /**
+   * The content behind `/`, when a page or the posts listing backs it.
+   *
+   * `/` is a STATIC route — `src/pages/index.astro` renders it whatever the
+   * content says — so the front page is not a resolved route of its own and
+   * adding one collides. But something usually produces what it shows, and
+   * without naming it here that entry looks like it never arrived.
+   */
+  readonly frontPageEntry?: ContentId;
 }
 
 /**
@@ -86,12 +108,14 @@ const page = (
   rawPath: string,
   origin: RouteOrigin,
   source: string,
+  entry?: ContentId,
 ): InventoryRoute => ({
   path: routeKey(rawPath),
   file: pageFileFor(routeKey(rawPath)),
   kind: "page",
   origin,
   source,
+  ...(entry === undefined ? {} : { entry }),
 });
 
 const data = (rawPath: string, source: string): InventoryRoute => ({
@@ -123,7 +147,11 @@ const RESOLVER_SOURCE = "src/pages/[...path].astro";
  * content produce byte-identical inventories.
  */
 export function buildRouteInventory(input: InventoryInput): InventoryRoute[] {
-  const routes: InventoryRoute[] = [...STATIC_ROUTES];
+  const routes: InventoryRoute[] = STATIC_ROUTES.map((route) =>
+    route.path === "/" && input.frontPageEntry !== undefined
+      ? { ...route, entry: input.frontPageEntry }
+      : route,
+  );
 
   for (const route of input.resolved) {
     const origin: RouteOrigin =
@@ -132,7 +160,7 @@ export function buildRouteInventory(input: InventoryInput): InventoryRoute[] {
           ? "pagination"
           : "archive"
         : route.kind;
-    routes.push(page(route.path, origin, RESOLVER_SOURCE));
+    routes.push(page(route.path, origin, RESOLVER_SOURCE, route.entry));
   }
 
   for (const rule of input.redirects ?? [])

@@ -1,4 +1,8 @@
 {
   "defaultLocale": "en",
-  "locales": [{ "code": "en", "hreflang": ["en"], "label": "English" }]
+  "locales": [
+    { "code": "en", "hreflang": ["en"], "label": "English" },
+    { "code": "pt-BR", "hreflang": ["pt-BR"], "label": "Português (Brasil)" },
+    { "code": "zh-Hans", "hreflang": ["zh-Hans"], "label": "简体中文" }
+  ]
 }

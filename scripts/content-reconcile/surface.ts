@@ -42,6 +42,7 @@ import { readFileSync } from "node:fs";
 
 import { attributeOf, blankEmbedded, walkElements } from "../lib/html-walk.ts";
 import type { SourceMarkup } from "./builders.ts";
+import { isComparable, isWholeWordAt, MAX_LENGTH } from "./script.ts";
 
 /** Elements whose text a reader acts on. */
 const LABEL_ELEMENTS = new Set(["a", "button", "label", "summary", "option"]);
@@ -54,6 +55,16 @@ const HEADING = /^h[1-6]$/;
  * and `$33.33 /month` are one price rendered by two engines. Entities and the
  * quote characters are unified for the same reason: WordPress serves `&#8217;`
  * where Astro serves `’`, and neither is a difference anybody can see.
+ *
+ * The last step is Unicode **NFC**, and it is the last step deliberately: every
+ * key this module hands out is canonical, so `says()` compares canonical
+ * against canonical and the grapheme count in `script.ts` counts canonical
+ * text. Without it a source page storing `café` decomposed (`e` + U+0301) and a
+ * build storing it composed are two different strings that no reader can tell
+ * apart — a false finding, and a distracting one.
+ *
+ * NFC, never NFKC: see the note in `script.ts` for why folding full-width and
+ * compatibility forms would hide real editorial differences.
  */
 export function normalise(text: string): string {
   return (
@@ -74,6 +85,7 @@ export function normalise(text: string): string {
       .replace(/\s*\/\s*/g, "/")
       .trim()
       .toLowerCase()
+      .normalize("NFC")
   );
 }
 
@@ -85,9 +97,20 @@ export interface Asked {
   readonly kind: string;
 }
 
-/** A one-character label is a glyph; a 140-character one is prose. */
-export const MIN_LENGTH = 3;
-export const MAX_LENGTH = 140;
+/**
+ * The band of string lengths this tool compares.
+ *
+ * Both ends are measured in GRAPHEMES and the floor is script-aware, because
+ * neither `String.length` nor a single number describes "long enough to be
+ * content" across writing systems. `script.ts` holds the rule and the
+ * measurements behind it.
+ */
+export { MAX_LENGTH } from "./script.ts";
+export {
+  MIN_LENGTH_SPARSE,
+  MIN_LENGTH_DENSE,
+  minimumLength,
+} from "./script.ts";
 
 /**
  * How to read one side of the comparison.
@@ -163,7 +186,7 @@ export function asked(
       const isHeading = HEADING.test(element.name);
       if (!isHeading && !LABEL_ELEMENTS.has(element.name)) return;
       const key = normalise(document.slice(element.contentStart, closeAt));
-      if (key.length < MIN_LENGTH || key.length > MAX_LENGTH) return;
+      if (!isComparable(key)) return;
       // First writer wins: a label nested in a heading is the inner, more
       // specific carrier, and it is met first because `onClose` fires inside
       // out.
@@ -176,19 +199,23 @@ export function asked(
 }
 
 /**
- * Whether a corpus says a string, at a word boundary.
+ * Whether a corpus says a string, at a word boundary, in any script.
  *
  * Plain containment is not enough, and a test caught it: `$999.99/mo` sits
  * inside `$999.99/month`, so a struck-through price matched the live one and a
  * real difference reported itself as agreement. A match has to end where a
  * word ends.
+ *
+ * The boundary test lives in `script.ts` because the first version of it —
+ * `/[a-z0-9]/` — described the Latin alphabet and nothing else. Every
+ * character of `会社`, `দাম` and `كتاب` failed it, so every position read as a
+ * boundary, the guard evaporated, and containment alone counted as agreement
+ * on every non-Latin site. Measured, and now a regression test.
  */
 export function says(corpus: string, key: string): boolean {
   let at = corpus.indexOf(key);
   while (at >= 0) {
-    const before = at === 0 ? "" : corpus[at - 1]!;
-    const after = corpus[at + key.length] ?? "";
-    if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) return true;
+    if (isWholeWordAt(corpus, key, at)) return true;
     at = corpus.indexOf(key, at + 1);
   }
   return false;

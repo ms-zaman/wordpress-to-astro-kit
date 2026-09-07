@@ -23,15 +23,51 @@ const CONTENT = "../../content";
 const MARKDOWN_ENTRIES = ["**/*.md", "!**/README.md"];
 const DATA_ENTRIES = ["**/*.json", "!**/README.md"];
 
+/**
+ * The entry id comes from the FILE PATH, never from the front matter.
+ *
+ * Astro's `glob` loader defaults to using a `slug` field when the front matter
+ * has one, and this kit's content model has one on every entry — so the
+ * default made the id a value the content chooses rather than a value the tree
+ * guarantees.
+ *
+ * That collides with a rule the content contract enforces in the opposite
+ * direction: **a translation cluster shares one untranslated slug**, because
+ * the slug identifies the page and the language identifies the version. Two
+ * files with `slug: about` and different locales are exactly what a translated
+ * corpus looks like, and under the default loader one of them silently won and
+ * the other was never loaded at all.
+ *
+ * Measured: with `about.md` (en), `sobre.md` (pt-BR) and `guanyu.md` (zh-Hans)
+ * all carrying `slug: about`, `getCollection("pages")` returned ONE of the
+ * three. The build then failed on an unrelated symptom — a child page whose
+ * parent "is not a en page" — because the survivor was a translation the
+ * locale filter removed.
+ *
+ * This is upstream of every gate, including `content-integrity`: an entry that
+ * never loads is never intended, so nothing downstream can miss it. The fix
+ * belongs here, at the loader, where identity is assigned.
+ */
+const idFromPath = ({ entry }: { entry: string }): string =>
+  entry.replace(/\.[^./]+$/, "");
+
 /** Pages — WordPress `page`. Front matter plus an HTML (or Markdown) body. */
 const pages = defineCollection({
-  loader: glob({ pattern: MARKDOWN_ENTRIES, base: `${CONTENT}/pages` }),
+  loader: glob({
+    pattern: MARKDOWN_ENTRIES,
+    base: `${CONTENT}/pages`,
+    generateId: idFromPath,
+  }),
   schema: pageSchema,
 });
 
 /** Posts — WordPress `post`. */
 const posts = defineCollection({
-  loader: glob({ pattern: MARKDOWN_ENTRIES, base: `${CONTENT}/posts` }),
+  loader: glob({
+    pattern: MARKDOWN_ENTRIES,
+    base: `${CONTENT}/posts`,
+    generateId: idFromPath,
+  }),
   schema: postSchema,
 });
 

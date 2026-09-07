@@ -28,6 +28,13 @@ Run in this order. Each rung reads something the one before it produced.
 | 11  | `pnpm test:browser`       | the controls, operated                      | **yes**         |
 | 12  | `pnpm release:review`     | all of the above, as one verdict            | no              |
 
+`pnpm content:integrity` runs inside `validate`, straight after the build
+audit — it is the only gate that reads BOTH sides of the build boundary. Every
+other check reads one: the content contract never opens `dist/`, and the build
+audit compares the manifest against the emitted files, which are both outputs
+of the same build. An entry the resolver dropped in between was invisible to
+all of them.
+
 `pnpm validate` runs 1–7 and every suite. `pnpm stage` runs 8–12. CI splits
 them into two jobs for the same reason: a machine without Chrome should still
 be able to run everything in the first list.
@@ -49,6 +56,7 @@ for a build the run never loaded. So a busy port is a fatal, named error, and
 | [`site-map-audit/`](site-map-audit/)           | What does the source site publish, and does this build account for all of it?                                                                 |
 | [`content-capture/`](content-capture/)         | What content exists on the source site, will it hand it over, and which bodies did not come back whole?                                       |
 | [`content-reconcile/`](content-reconcile/)     | Does your page SAY what the source page says, and is anything on it invented?                                                                 |
+| [`content-integrity/`](content-integrity/)     | Did every entry in `content/` cross the build boundary, and can every emitted page name the content behind it?                                |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |

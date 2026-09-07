@@ -362,6 +362,8 @@ check(
 const manifest = buildManifest({
   resolved,
   collections: [{ name: "posts", entries: 11, routed: 11 }],
+  intended: [],
+  locale: "en",
 });
 check(
   "the manifest validates",
@@ -370,6 +372,56 @@ check(
     .map((p) => p.at)
     .join(", "),
 );
+// ---------------------------------------------------------------------------
+// Content identity crosses the build boundary.
+//
+// The manifest is the only artifact that can answer "did every entry arrive?",
+// and it can only answer it if a route can name the content behind it. These
+// assert the shape that makes the `content-integrity` gate possible at all —
+// without them the gate would still run, find nothing, and report success.
+check(
+  "a resolved route carries the content identity it came from",
+  buildRouteInventory({
+    resolved: [{ path: "/hello", kind: "post", entry: "posts/hello@en" }],
+  }).find((route) => route.path === "/hello")?.entry === "posts/hello@en",
+);
+check(
+  "a static route carries none, because no entry produces it",
+  buildRouteInventory({ resolved: [] }).find((route) => route.path === "/404")
+    ?.entry === undefined,
+);
+check(
+  "the front page's identity rides on the static `/` route",
+  // `/` is rendered by index.astro whatever the content says, so the page
+  // behind it is not a resolved route — and without this the home entry would
+  // read as intended-but-never-emitted.
+  buildRouteInventory({
+    resolved: [],
+    frontPageEntry: "pages/home@en",
+  }).find((route) => route.path === "/")?.entry === "pages/home@en",
+);
+check(
+  "the manifest carries the locale it built and what content intended",
+  manifest.content.locale === "en" && Array.isArray(manifest.content.intended),
+);
+
+// The locale registry accepts the forms a real WordPress site publishes. This
+// is a contract about identity, not about i18n: an entry whose locale cannot
+// be named cannot be reported as withheld either.
+for (const [code, allowed] of [
+  ["en", true],
+  ["pt-BR", true],
+  ["zh-Hans", true],
+  ["en-GB", true],
+  ["pt_BR", false],
+  ["en-gb", false],
+] as const)
+  check(
+    `locale "${code}" is ${allowed ? "accepted" : "refused"}`,
+    /^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$/.test(code) ===
+      allowed,
+  );
+
 check(
   "the manifest records the preview environment",
   manifest.build.environment === "preview",

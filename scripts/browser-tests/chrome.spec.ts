@@ -206,3 +206,84 @@ test("no page loads a script from anywhere — islands are inline", async ({
     await page.goto(route);
   expect(scripts).toEqual([]);
 });
+
+test.describe("content reaches a reader", () => {
+  // The end of the chain the content-integrity gate proves the middle of:
+  //
+  //     content/posts/*.md -> resolver -> [...path].astro -> dist -> BROWSER
+  //
+  // Every other check in that chain reads a file. This one loads the page the
+  // way a person does and reads the words off it, which is the only step that
+  // can catch a build that emitted a file containing nothing.
+  //
+  // Depends on: the sample post `a-second-post`, and the deployment manifest
+  // naming the content behind every route.
+  test("a post's own words are painted, not just its file emitted", async ({
+    page,
+  }) => {
+    await page.goto("/a-second-post/");
+    // A phrase from `content/posts/a-second-post.md`, chosen because nothing
+    // in the layout, the navigation or the footer could produce it.
+    await expect(
+      page.getByText("A migrated post body is the HTML WordPress rendered"),
+    ).toBeVisible();
+    await expect(page.locator("h1")).toContainText(
+      "A second post, with the shapes a body carries",
+    );
+  });
+
+  test("THE MANIFEST NAMES THE CONTENT BEHIND THE PAGE JUST LOADED", async ({
+    page,
+    request,
+  }) => {
+    // Closes the loop in the browser rather than on disk: the page a reader
+    // gets and the identity the integrity gate joins on have to be the same
+    // thing, or the gate is proving a relationship nobody experiences.
+    await page.goto("/a-second-post/");
+    const manifest = await (await request.get("/deployment.json")).json();
+    const route = manifest.routes.inventory.find(
+      (entry: { path: string }) => entry.path === "/a-second-post",
+    );
+    expect(
+      route,
+      "the route this browser just loaded is in the manifest",
+    ).toBeTruthy();
+    expect(route.entry).toBe("posts/a-second-post@en");
+    expect(
+      manifest.content.intended.some(
+        (intent: { id: string }) => intent.id === route.entry,
+      ),
+      "and content/ intends the identity the route names",
+    ).toBe(true);
+  });
+
+  test("a withheld translation is NAMED, not vanished", async ({ request }) => {
+    // The silent-corruption case, stated as a browser-visible fact: an entry
+    // in a locale this build does not publish must appear in the artifact as
+    // intended, so it can be reported as withheld. Before this contract it
+    // left no trace anywhere.
+    //
+    // Skipped when the sample content carries only one locale, which is how
+    // the kit ships — the assertion is about what happens WHEN one exists.
+    const manifest = await (await request.get("/deployment.json")).json();
+    const other = manifest.content.intended.filter(
+      (intent: { id: string }) =>
+        intent.id.includes("@") &&
+        !intent.id.endsWith(`@${manifest.content.locale}`),
+    );
+    test.skip(
+      other.length === 0,
+      "sample content is single-locale; nothing is withheld",
+    );
+    const routed = new Set(
+      manifest.routes.inventory
+        .map((entry: { entry?: string }) => entry.entry)
+        .filter(Boolean),
+    );
+    for (const intent of other)
+      expect(
+        routed.has(intent.id),
+        `${intent.id} is named as intended and correctly not routed`,
+      ).toBe(false);
+  });
+});

@@ -46,6 +46,45 @@ you dropped, and copy you invented that the source has no trace of.
 caught it: `$999.99/mo` sits inside `$999.99/month`, so a struck-through price
 matched the live one and a real difference reported itself as agreement.
 
+**And "a word" is not an English word.** The first version of that guard was
+`/[a-z0-9]/`, which describes the Latin alphabet and nothing else. No character
+of `会社`, `দাম` or `كتاب` matches it, so on any non-Latin site every position
+read as a word boundary, the guard silently evaporated, and containment alone
+counted as agreement again — in the dangerous direction. Measured, before the
+fix:
+
+```
+  says("$999.99/month", "$999.99/mo")   false   correct
+  says("会社概要",  "会社")               TRUE    wrong
+  says("দামি",     "দাম")               TRUE    wrong
+  says("كتابي",    "كتاب")              TRUE    wrong
+```
+
+The rule is now Unicode general categories — a letter, a number or a **combining
+mark** continues a word. The mark is the part a rule written against letters and
+digits misses: after a match on `দাম` comes the vowel sign `ি`, which is a mark,
+not a letter.
+
+**Short is not the same as decorative.** The length floor was three characters,
+which discarded `会社` ("company") and `採用` ("recruitment") — measured, a
+Japanese page asked one string of three, and the other two were reported as
+matched because they were never compared. The floor is now measured in
+**graphemes** (`দামি` is 4 code points and 2 graphemes) and is script-aware:
+three for text written entirely in Latin, Cyrillic, Greek and symbols, where an
+icon font's glyphs live; two everywhere else, where one grapheme is a syllable
+or a whole word. Latin behaviour is unchanged.
+
+**Keys are normalised to NFC, never NFKC.** WordPress serves whatever the editor
+stored, so `café` composed and decomposed must compare equal. NFKC is refused
+because it folds full-width `Ａ` to `A` and `①` to `1`, and in Japanese and
+Korean content that distinction is a real editorial choice a migration can get
+wrong — folding it would hide the difference rather than report it.
+
+`Intl.Segmenter` with `granularity: "word"` is deliberately **not** used. Its
+CJK segmentation comes from an ICU dictionary that differs between builds, so
+the same page would reconcile differently on two machines. Grapheme
+segmentation is used, because UAX #29 grapheme rules are stable.
+
 ## Three things come off first, from both sides
 
 1. **Anything hidden at every breakpoint, by ancestry.** A page builder emits

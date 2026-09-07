@@ -16,6 +16,7 @@ import {
   type BuildMetadata,
   type EnvironmentRecord,
 } from "./build-metadata.ts";
+import type { IntendedContent } from "./content-integrity.ts";
 import {
   buildRouteInventory,
   countRoutes,
@@ -44,6 +45,18 @@ export interface DeploymentManifest {
   readonly content: {
     readonly collections: readonly CollectionSummary[];
     readonly entries: number;
+    /** The locale this build routed. One at a time, by design. */
+    readonly locale: string;
+    /**
+     * Every identity `content/` intends to publish, in EVERY locale.
+     *
+     * The half the manifest never carried. Counts could say 280 entries became
+     * 279 pages; only names can say WHICH one did not arrive, and a build that
+     * drops one entry and invents another produces identical counts. An entry
+     * this build does not route is listed here too — being named as intended
+     * is what lets it be reported as withheld instead of vanishing.
+     */
+    readonly intended: readonly IntendedContent[];
   };
   /** The open hosting decision, stated in the artifact. */
   readonly hosting: {
@@ -67,6 +80,8 @@ const HOSTING_UNDECIDED = {
 
 export interface ManifestInput extends InventoryInput {
   readonly collections: readonly CollectionSummary[];
+  readonly intended: readonly IntendedContent[];
+  readonly locale: string;
   readonly environment?: EnvironmentRecord;
 }
 
@@ -96,6 +111,11 @@ export function buildManifest(input: ManifestInput): DeploymentManifest {
       entries: input.collections.reduce(
         (sum, collection) => sum + collection.entries,
         0,
+      ),
+      locale: input.locale,
+      // Sorted so two builds of one content tree serialise identically.
+      intended: [...input.intended].sort((left, right) =>
+        left.id.localeCompare(right.id),
       ),
     },
     hosting: HOSTING_UNDECIDED,

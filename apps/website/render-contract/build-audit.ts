@@ -119,7 +119,14 @@ for (const route of pages) {
   if (h1s !== 1) headProblems.push(`${route.path}: ${h1s} h1 elements`);
   if (!/<title>[^<]+<\/title>/.test(html))
     headProblems.push(`${route.path}: no title`);
-  if (!/<html lang="[a-z]{2}(?:-[A-Za-z]{2})?"/.test(html))
+  // Matches the locale registry's own rule (content-model/shared.ts): a
+  // language tag with an optional script and an optional region. A narrower
+  // regex here would fail a build whose locale the registry accepted.
+  if (
+    !/<html lang="[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?"/.test(
+      html,
+    )
+  )
     headProblems.push(`${route.path}: no lang`);
   if (!/<main id="main"/.test(html))
     headProblems.push(`${route.path}: no main landmark`);
