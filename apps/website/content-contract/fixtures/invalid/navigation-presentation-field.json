@@ -1,0 +1,6 @@
+{
+  "slug": "header",
+  "items": [
+    { "label": { "en": "Home" }, "href": "/", "cssClass": "menu-item-home" }
+  ]
+}

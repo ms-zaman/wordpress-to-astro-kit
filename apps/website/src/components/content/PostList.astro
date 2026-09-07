@@ -1,0 +1,205 @@
+---
+// PostList — the one listing surface for posts. Four surfaces list posts —
+// the posts index, a category, a tag, an author archive — and they differ
+// only in which posts they were handed and what to say when there are none,
+// so they share this grid rather than growing four card grids that drift.
+//
+// The card: a 16/9 image, the date, the title as a heading, the author. No
+// border, no background, no shadow — a tile is the image and two lines of
+// text on the page. Measure the live site's card and change it here, once.
+import { Heading, Text, type SectionHeadingLevel } from "@wpk/ui";
+
+import ImageBlock from "./ImageBlock.astro";
+import { formatDate } from "../../rendering/post-view.ts";
+import { mediaUrl } from "../../rendering/media.ts";
+
+/**
+ * How wide a card's image renders — one column under 768, two to 1024, three
+ * above, in the container with the gutter and the gap. Without it the browser
+ * assumes `100vw` and the `srcset` buys nothing.
+ */
+const CARD_SIZES =
+  "(max-width: 767px) calc(100vw - 40px), " +
+  "(max-width: 1024px) calc((100vw - 64px) / 2), " +
+  "calc((min(100vw - 40px, 1200px) - 48px) / 3)";
+
+export interface PostCard {
+  readonly href: string;
+  readonly title: string;
+  readonly publishedAt: string;
+  readonly featuredImage?: {
+    url: string;
+    alt?: string;
+    width?: number;
+    height?: number;
+    variants?: readonly { url: string; width: number; height: number }[];
+  };
+  readonly author?: {
+    readonly name: string;
+    readonly href: string;
+    readonly avatar?: { url: string };
+  };
+}
+
+interface Props {
+  posts: readonly PostCard[];
+  /** What to render when there are no posts. Every caller has a different one. */
+  emptyMessage: string;
+  locale: string;
+  /** The level of the topmost heading this component renders. */
+  headingAs?: SectionHeadingLevel;
+  /** The first row's images load eagerly — they are above the fold. */
+  eagerCount?: number;
+}
+
+const {
+  posts,
+  emptyMessage,
+  locale,
+  headingAs = "h2",
+  eagerCount = 3,
+} = Astro.props;
+---
+
+{
+  posts.length === 0 ? (
+    <Text tone="muted" class="wpk-post-list__empty" data-wpk-empty>
+      {emptyMessage}
+    </Text>
+  ) : (
+    <ul role="list" class="wpk-post-list">
+      {posts.map((post, index) => (
+        <li class="wpk-post-card">
+          <a class="wpk-post-card__link" href={post.href}>
+            <ImageBlock
+              media={post.featuredImage}
+              fit="wide"
+              loading={index < eagerCount ? "eager" : "lazy"}
+              sizes={CARD_SIZES}
+            />
+            <time class="wpk-post-card__date" datetime={post.publishedAt}>
+              {formatDate(post.publishedAt, locale)}
+            </time>
+            <Heading as={headingAs} size="card" class="wpk-post-card__title">
+              {post.title}
+            </Heading>
+          </a>
+          {post.author && (
+            <a class="wpk-post-card__author" href={post.author.href}>
+              {post.author.avatar ? (
+                <img
+                  class="wpk-post-card__avatar"
+                  src={mediaUrl(post.author.avatar.url)}
+                  alt=""
+                  width="24"
+                  height="24"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <span
+                  class="wpk-post-card__avatar wpk-post-card__avatar--initial"
+                  aria-hidden="true"
+                >
+                  {post.author.name.slice(0, 1)}
+                </span>
+              )}
+              <span class="wpk-post-card__author-name">{post.author.name}</span>
+            </a>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+<style>
+  .wpk-post-list {
+    margin-block: 0;
+    padding-inline-start: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-2xl) var(--space-lg);
+  }
+
+  @media (min-width: 768px) {
+    .wpk-post-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1025px) {
+    .wpk-post-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .wpk-post-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  /* The whole tile is one link, so the target is the card, not four words. */
+  .wpk-post-card__link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .wpk-post-card__date {
+    margin-block-start: var(--space-2xs);
+    color: var(--color-link);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.4;
+  }
+
+  .wpk-post-card__title {
+    margin-block: 0;
+    text-wrap: pretty;
+  }
+
+  .wpk-post-card__link:hover .wpk-post-card__title,
+  .wpk-post-card__link:focus-visible .wpk-post-card__title {
+    text-decoration: underline;
+  }
+
+  .wpk-post-card__author {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    align-self: flex-start;
+    color: var(--color-text-muted);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    text-decoration: none;
+  }
+
+  .wpk-post-card__author:hover .wpk-post-card__author-name,
+  .wpk-post-card__author:focus-visible .wpk-post-card__author-name {
+    color: var(--color-link);
+    text-decoration: underline;
+  }
+
+  .wpk-post-card__avatar {
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    background-color: var(--color-surface-band);
+  }
+
+  .wpk-post-card__avatar--initial {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-caption);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-link);
+  }
+</style>

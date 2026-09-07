@@ -1,0 +1,6 @@
+{
+  "path": "https://example.com/blog/",
+  "locale": "en",
+  "metaTitle": "The blog",
+  "source": { "system": "authored" }
+}

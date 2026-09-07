@@ -1,0 +1,342 @@
+---
+// A post, rendered: the trail, the primary category, the title, the date and
+// reading time, the featured image, the body, the categories and tags it is
+// filed under, the author, and the posts related to it by a shared facet.
+import { render } from "astro:content";
+import { Heading, Section, Text } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import ImageBlock from "../components/content/ImageBlock.astro";
+import PostList, { type PostCard } from "../components/content/PostList.astro";
+import Prose from "../components/content/Prose.astro";
+import { buildContentIndex } from "../content-index/adapters.ts";
+import { discoverable } from "../content-index/filters.ts";
+import { relatedContent } from "../content-index/related.ts";
+import { trailCrumbs } from "../content-index/wayfinding.ts";
+import { prepareBody } from "../rendering/body.ts";
+import {
+  META_DESCRIPTION_MAX,
+  blogPostingJsonLd,
+} from "../rendering/head-model.ts";
+import { mediaUrl } from "../rendering/media.ts";
+import {
+  formatDate,
+  postSummary,
+  readingTime,
+} from "../rendering/post-view.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME, siteOrigin } from "../rendering/site-identity.ts";
+import { authorPath, categoryPath, tagPath } from "../routing/permalink.ts";
+import { nameFor, type PostRoute } from "../routing/resolver.ts";
+import type { PostEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: PostRoute<PostEntry>;
+  site: SiteData;
+}
+
+const { route, site } = Astro.props;
+const { entry } = route;
+const { data } = entry;
+
+const markdown = data.bodyFormat === "markdown";
+const rendered = markdown ? await render(entry) : undefined;
+const html = markdown ? "" : prepareBody(entry.body ?? "");
+
+const author = site.authorOf(data.author);
+const authorHref = author
+  ? authorPath(author.nicename ?? author.slug)
+  : undefined;
+
+const label = (
+  slug: string,
+  row:
+    | { slug: string; name: Readonly<Partial<Record<string, string>>> }
+    | undefined,
+) => (row ? nameFor(row, data.locale, site.locale) : slug);
+
+const categories = data.categories.map((slug) => ({
+  slug,
+  label: label(slug, site.categoryOf(slug)),
+  href: categoryPath(slug),
+}));
+const tags = (data.tags ?? []).map((slug) => ({
+  slug,
+  label: label(slug, site.tagOf(slug)),
+  href: tagPath(slug),
+}));
+const primary = categories[0];
+
+const summary = postSummary(data, entry.body, META_DESCRIPTION_MAX);
+const minutes = readingTime(entry.body).minutes;
+
+const postsLabel = site.postsArchive?.title ?? "Posts";
+
+// Related posts, from the same index the search reads.
+const index = buildContentIndex({ posts: site.allPosts, hrefOf: site.hrefOf });
+const indexed = discoverable(index, { locale: data.locale, kind: "post" }).find(
+  (row) => row.slug === data.slug,
+);
+const related = indexed ? relatedContent(indexed, index) : [];
+const relatedCards: PostCard[] = related.flatMap((match) => {
+  const post = site.allPosts.find(
+    (candidate) =>
+      candidate.data.slug === match.entry.slug &&
+      candidate.data.locale === match.entry.locale,
+  );
+  if (!post) return [];
+  const postAuthor = site.authorOf(post.data.author);
+  return [
+    {
+      href: match.entry.href,
+      title: post.data.title,
+      publishedAt: post.data.publishedAt,
+      featuredImage: post.data.featuredImage,
+      author: postAuthor
+        ? {
+            name: postAuthor.name,
+            href: authorPath(postAuthor.nicename ?? postAuthor.slug),
+            avatar: postAuthor.avatar,
+          }
+        : undefined,
+    },
+  ];
+});
+
+const seo = seoMetadata(
+  {
+    title: `${data.title} – ${SITE_NAME}`,
+    description: summary,
+    ogImage: data.featuredImage
+      ? { url: data.featuredImage.url, alt: data.featuredImage.alt }
+      : undefined,
+  },
+  findOverride(site.overrides, route.path, data.locale),
+);
+
+const crumbs = trailCrumbs(
+  [{ label: postsLabel, href: site.postsIndex }],
+  data.title,
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={data.locale}
+  ogType="article"
+  articleTimes={{ published: data.publishedAt, modified: data.updatedAt }}
+  jsonLd={blogPostingJsonLd({
+    headline: data.title,
+    description: seo.description,
+    datePublished: data.publishedAt,
+    dateModified: data.updatedAt,
+    authorName: author?.name,
+    locale: data.locale,
+    path: route.path,
+    image: data.featuredImage && mediaUrl(data.featuredImage.url),
+    origin: siteOrigin(),
+  })}
+  crumbs={crumbs}
+>
+  <Section gap="none">
+    <article class="wpk-post">
+      <Breadcrumbs crumbs={crumbs} />
+      <header class="wpk-post__header">
+        {
+          primary && (
+            <a class="wpk-post__category" href={primary.href}>
+              {primary.label}
+            </a>
+          )
+        }
+        <Heading as="h1" size="lg" class="wpk-post__title">
+          {data.title}
+        </Heading>
+        <p class="wpk-post__meta">
+          <span class="wpk-post__meta-label">Published on</span>
+          <time datetime={data.publishedAt}>
+            {formatDate(data.publishedAt, data.locale)}
+          </time>
+          {
+            minutes > 0 && (
+              <span class="wpk-post__reading">{minutes} min read</span>
+            )
+          }
+          {
+            author && (
+              <span class="wpk-post__byline">
+                by <a href={authorHref}>{author.name}</a>
+              </span>
+            )
+          }
+        </p>
+      </header>
+      <ImageBlock
+        media={data.featuredImage}
+        fit="wide"
+        loading="eager"
+        sizes="(max-width: 767px) calc(100vw - 40px), 840px"
+      />
+      <Prose variant="article" measure={false}>
+        {rendered ? <rendered.Content /> : <Fragment set:html={html} />}
+      </Prose>
+      <footer class="wpk-post__footer">
+        {
+          categories.length > 0 && (
+            <p class="wpk-post__filed">
+              <span class="wpk-post__filed-label">Filed under</span>
+              {categories.map((category, position) => (
+                <>
+                  {position > 0 && <span aria-hidden="true">, </span>}
+                  <a href={category.href}>{category.label}</a>
+                </>
+              ))}
+            </p>
+          )
+        }
+        {
+          tags.length > 0 && (
+            <p class="wpk-post__filed">
+              <span class="wpk-post__filed-label">Tags</span>
+              {tags.map((tag, position) => (
+                <>
+                  {position > 0 && <span aria-hidden="true">, </span>}
+                  <a href={tag.href}>{tag.label}</a>
+                </>
+              ))}
+            </p>
+          )
+        }
+        {
+          author?.bio && (
+            <Text size="sm" tone="muted" class="wpk-post__author-bio">
+              <a href={authorHref}>{author.name}</a> — {author.bio}
+            </Text>
+          )
+        }
+      </footer>
+    </article>
+  </Section>
+  {
+    relatedCards.length > 0 && (
+      <Section gap="md" aria-labelledby="wpk-related-title">
+        <Heading as="h2" size="md" id="wpk-related-title">
+          Related posts
+        </Heading>
+        <PostList
+          posts={relatedCards}
+          locale={data.locale}
+          headingAs="h3"
+          emptyMessage=""
+          eagerCount={0}
+        />
+      </Section>
+    )
+  }
+</BaseLayout>
+
+<style>
+  .wpk-post {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    max-inline-size: 52.5rem;
+    min-inline-size: 0;
+  }
+
+  .wpk-post__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .wpk-post__category {
+    align-self: flex-start;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-full);
+    background-color: var(--color-surface-band);
+    color: var(--color-link);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    text-decoration: none;
+  }
+
+  .wpk-post__category:hover,
+  .wpk-post__category:focus-visible {
+    text-decoration: underline;
+  }
+
+  .wpk-post__title {
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  .wpk-post__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs);
+    margin: 0;
+    padding-block-end: var(--space-md);
+    border-block-end: var(--border-width) solid var(--color-border);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-md);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-post__meta-label {
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-link);
+  }
+
+  /* The separator belongs to the reading time, so it can never begin a
+     wrapped line on its own. */
+  .wpk-post__reading,
+  .wpk-post__byline {
+    white-space: nowrap;
+  }
+
+  .wpk-post__reading::before,
+  .wpk-post__byline::before {
+    content: "·";
+    margin-inline-end: 0.5ch;
+  }
+
+  .wpk-post__byline a {
+    color: var(--color-link);
+  }
+
+  .wpk-post__footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding-block-start: var(--space-md);
+    border-block-start: var(--border-width) solid var(--color-border);
+  }
+
+  .wpk-post__filed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    margin: 0;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-post__filed-label {
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+  }
+
+  .wpk-post__filed a,
+  .wpk-post__author-bio a {
+    color: var(--color-link);
+  }
+</style>

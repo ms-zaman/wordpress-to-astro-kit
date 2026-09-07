@@ -1,0 +1,10 @@
+{
+  "$comment": "Cluster integrity is NOT exercised here, and cannot be: the kit's locale registry holds one locale, so every entry is its own cluster's source. `invalid-cross/cluster-*.json` covers those rules over synthetic entries. Add a locale to the registry and a variant here to exercise them over real files.",
+  "codes": [
+    "page-parent-unknown",
+    "post-author-unknown",
+    "post-category-unknown"
+  ],
+  "problems": 1,
+  "samples": 0
+}

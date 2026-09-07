@@ -1,0 +1,12 @@
+{
+  "slug": "header",
+  "name": { "en": "Main Menu" },
+  "items": [
+    { "label": { "en": "Home" }, "href": "/" },
+    {
+      "label": { "en": "About" },
+      "href": "/about/",
+      "children": [{ "label": { "en": "Team" }, "href": "/about/team/" }]
+    }
+  ]
+}

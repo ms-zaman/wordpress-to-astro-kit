@@ -1,0 +1,291 @@
+---
+// Prose — the styling for a rendered body: the bare elements WordPress's
+// HTML (or a Markdown body) produces and the Foundation primitives never
+// touch. It is not a Foundation component because it styles the output of one
+// pipeline, and Foundation components carry no pipeline assumption.
+//
+// It carries WordPress's own vocabulary where a migrated body needs it: the
+// preset colour classes core writes, the button block, alignment classes, and
+// the common shapes a page builder leaves behind. Extend it when a capture
+// arrives carrying a class that paints nothing — the visibility contract is
+// that an unknown class renders unstyled, never invisible.
+interface Props {
+  /** Constrain to a comfortable measure. Off inside a narrow column. */
+  measure?: boolean;
+  /** `article` is a post body at the larger reading size. */
+  variant?: "default" | "article";
+}
+
+const { measure = true, variant = "default" } = Astro.props;
+---
+
+<div
+  class:list={[
+    "wpk-prose",
+    measure && "wpk-prose--measure",
+    variant === "article" && "wpk-prose--article",
+  ]}
+>
+  <slot />
+</div>
+
+<style>
+  .wpk-prose--measure {
+    max-inline-size: var(--measure);
+  }
+
+  .wpk-prose--article {
+    font-size: var(--font-size-body-lg);
+  }
+
+  .wpk-prose :global(h2) {
+    margin-block: var(--space-lg) var(--space-xs);
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-md);
+    line-height: var(--line-height-snug);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .wpk-prose :global(h3) {
+    margin-block: var(--space-md) var(--space-2xs);
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-sm);
+    line-height: var(--line-height-snug);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  /* h4–h6: a ramp that bottoms out at body size and separates the last two
+     levels by weight and colour, so no heading is ever smaller than the
+     paragraphs under it (the browser's h5 and h6 defaults are). */
+  .wpk-prose :global(h4) {
+    margin-block: var(--space-md) var(--space-2xs);
+    font-size: var(--font-size-body-lg);
+    line-height: var(--line-height-snug);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .wpk-prose :global(h5) {
+    margin-block: var(--space-sm) var(--space-2xs);
+    font-size: var(--font-size-body-md);
+    line-height: var(--line-height-snug);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .wpk-prose :global(h6) {
+    margin-block: var(--space-sm) var(--space-2xs);
+    font-size: var(--font-size-body-md);
+    line-height: var(--line-height-snug);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .wpk-prose :global(p),
+  .wpk-prose :global(ul),
+  .wpk-prose :global(ol) {
+    margin-block: var(--space-sm);
+  }
+
+  .wpk-prose :global(blockquote) {
+    margin-inline: 0;
+    margin-block: var(--space-md);
+    padding-inline-start: var(--space-md);
+    border-inline-start: 3px solid var(--color-border-interactive);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-prose :global(a) {
+    color: var(--color-link);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .wpk-prose :global(a:hover) {
+    color: var(--color-primary-strong);
+  }
+
+  /* The button block. `wp-element-button` is core's class; a preset
+     background class on the wrapper wins over the default fill below. */
+  .wpk-prose :global(a.wp-block-button__link),
+  .wpk-prose :global(.wp-element-button) {
+    display: inline-block;
+    padding: 0.75rem var(--space-lg);
+    border-radius: var(--radius-md);
+    background-color: var(--wp-button-default);
+    color: var(--wp-preset-white);
+    text-decoration: none;
+  }
+
+  /* WordPress core's preset colour classes. */
+  .wpk-prose :global(.has-white-color) {
+    color: var(--wp-preset-white);
+  }
+  .wpk-prose :global(.has-black-color) {
+    color: var(--wp-preset-black);
+  }
+  .wpk-prose :global(.has-vivid-cyan-blue-color) {
+    color: var(--wp-preset-vivid-cyan-blue);
+  }
+  .wpk-prose :global(.has-vivid-purple-color) {
+    color: var(--wp-preset-vivid-purple);
+  }
+  .wpk-prose :global(.has-vivid-red-color) {
+    color: var(--wp-preset-vivid-red);
+  }
+  .wpk-prose :global(.has-white-background-color) {
+    background-color: var(--wp-preset-white);
+  }
+  .wpk-prose :global(.has-black-background-color) {
+    background-color: var(--wp-preset-black);
+  }
+  .wpk-prose :global(.has-pale-cyan-blue-background-color) {
+    background-color: var(--wp-preset-pale-cyan-blue);
+  }
+  .wpk-prose :global(.has-cyan-bluish-gray-background-color) {
+    background-color: var(--wp-preset-cyan-bluish-gray);
+  }
+  .wpk-prose :global(.has-vivid-cyan-blue-background-color) {
+    background-color: var(--wp-preset-vivid-cyan-blue);
+  }
+  .wpk-prose :global(.has-light-green-cyan-background-color) {
+    background-color: var(--wp-preset-light-green-cyan);
+  }
+  .wpk-prose :global(.has-luminous-vivid-amber-background-color) {
+    background-color: var(--wp-preset-luminous-vivid-amber);
+  }
+  .wpk-prose :global(.has-pale-pink-background-color) {
+    background-color: var(--wp-preset-pale-pink);
+  }
+
+  /* A preset-tinted paragraph or group is a box; give it the padding core's
+     editor gives it. */
+  .wpk-prose :global(p.has-background),
+  .wpk-prose :global(.wp-block-group.has-background) {
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-md);
+  }
+
+  /* Alignment classes. */
+  .wpk-prose :global(.has-text-align-center) {
+    text-align: center;
+  }
+  .wpk-prose :global(.has-text-align-right) {
+    text-align: end;
+  }
+  .wpk-prose :global(.aligncenter) {
+    display: block;
+    margin-inline: auto;
+  }
+  .wpk-prose :global(.alignwide),
+  .wpk-prose :global(.alignfull) {
+    max-inline-size: none;
+  }
+
+  /* Common page-builder residue: a button, an alert box, an accordion
+     header. Kept to shapes, never to a builder's colours. */
+  .wpk-prose :global(a.elementor-button),
+  .wpk-prose :global(a.cta-button) {
+    display: inline-block;
+    padding: 0.75rem var(--space-lg);
+    border-radius: var(--radius-md);
+    background-color: var(--color-primary);
+    color: var(--color-text-inverse);
+    text-decoration: none;
+  }
+
+  .wpk-prose :global(.elementor-alert) {
+    padding: var(--space-md) var(--space-lg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+  }
+
+  .wpk-prose :global(.elementor-tab-title),
+  .wpk-prose :global(.eael-accordion-header) {
+    font-weight: var(--font-weight-semibold);
+  }
+
+  /* An icon-font glyph with no font shipped is an empty element; hide it
+     rather than leave an empty inline box in the text. */
+  .wpk-prose :global([class*="fa-"]:empty) {
+    display: none;
+  }
+
+  .wpk-prose :global(code) {
+    padding: 0.1em 0.35em;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-surface);
+    font-size: 0.9em;
+  }
+
+  .wpk-prose :global(img) {
+    max-inline-size: 100%;
+    block-size: auto;
+    border-radius: var(--radius-md);
+  }
+
+  /* Wide content scrolls inside its own container; the page never does. */
+  .wpk-prose :global(pre),
+  .wpk-prose :global(table) {
+    max-inline-size: 100%;
+    overflow-x: auto;
+  }
+
+  .wpk-prose :global(pre) {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+    font-size: var(--font-size-body-sm);
+    line-height: var(--line-height-normal);
+  }
+
+  .wpk-prose :global(pre code) {
+    padding: 0;
+    background: none;
+  }
+
+  .wpk-prose :global(table) {
+    display: block;
+    border-collapse: collapse;
+  }
+
+  .wpk-prose :global(th),
+  .wpk-prose :global(td) {
+    padding: var(--space-xs) var(--space-sm);
+    border: var(--border-width) solid var(--color-border);
+    text-align: start;
+  }
+
+  .wpk-prose :global(th) {
+    background-color: var(--color-surface);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  /* Embeds keep their ratio and never overflow. */
+  .wpk-prose :global(iframe),
+  .wpk-prose :global(video),
+  .wpk-prose :global(object),
+  .wpk-prose :global(embed) {
+    max-inline-size: 100%;
+  }
+
+  .wpk-prose :global(.wp-block-embed__wrapper iframe),
+  .wpk-prose :global(.wp-video),
+  .wpk-prose :global(.wp-video video) {
+    inline-size: 100%;
+    block-size: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .wpk-prose :global(figure) {
+    margin-inline: 0;
+    margin-block: var(--space-md);
+  }
+
+  .wpk-prose :global(figcaption) {
+    margin-block-start: var(--space-2xs);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+</style>

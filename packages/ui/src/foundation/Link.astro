@@ -1,0 +1,50 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Link — navigation primitive with consistent, token-based styling.
+ * For button-shaped calls to action, use Button with `href` instead.
+ */
+interface Props extends HTMLAttributes<"a"> {
+  /** Visual variant. `subtle` inherits the surrounding text colour. */
+  variant?: "default" | "subtle";
+}
+
+const { variant = "default", class: className, ...rest } = Astro.props;
+---
+
+<a class:list={["wpk-link", `wpk-link--${variant}`, className]} {...rest}>
+  <slot />
+</a>
+
+<style>
+  .wpk-link {
+    font-family: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    transition: color var(--transition-fast);
+  }
+
+  /* The ring itself is the design system's (focus.css). What is left here is
+     the corner: an inline link has no radius of its own, so its outline would
+     be a hard rectangle around a word. */
+  .wpk-link:focus-visible {
+    border-radius: var(--radius-sm);
+  }
+
+  .wpk-link--default {
+    color: var(--color-link);
+  }
+
+  .wpk-link--default:hover {
+    color: var(--color-primary-strong);
+  }
+
+  .wpk-link--subtle {
+    color: inherit;
+  }
+
+  .wpk-link--subtle:hover {
+    color: var(--color-link);
+  }
+</style>

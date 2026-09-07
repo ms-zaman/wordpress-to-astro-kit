@@ -1,0 +1,63 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Card — a bounded content surface. `variant` is a closed union of exactly two
+ * treatments — a hairline outline and one fill — and it is not an elevation
+ * system: depth is a visual-language decision a card must not make on its own.
+ */
+interface Props extends HTMLAttributes<"div"> {
+  /** Rendered element. `li` for a card inside a list. */
+  as?: "div" | "article" | "li" | "section" | "aside";
+  /** Surface treatment. `outline` is a hairline border, `surface` a fill. */
+  variant?: "outline" | "surface";
+  /** Inner padding. `none` for a card whose child owns its own padding. */
+  padding?: "none" | "md" | "lg";
+}
+
+const {
+  as: Tag = "div",
+  variant = "outline",
+  padding = "lg",
+  class: className,
+  ...rest
+} = Astro.props;
+---
+
+<Tag
+  class:list={[
+    "wpk-card",
+    `wpk-card--${variant}`,
+    `wpk-card--pad-${padding}`,
+    className,
+  ]}
+  {...rest}
+>
+  <slot />
+</Tag>
+
+<style>
+  .wpk-card {
+    border-radius: var(--radius-lg);
+  }
+
+  .wpk-card--outline {
+    border: var(--border-width) solid var(--color-border);
+  }
+
+  .wpk-card--surface {
+    background-color: var(--color-surface);
+  }
+
+  .wpk-card--pad-none {
+    padding: 0;
+  }
+
+  .wpk-card--pad-md {
+    padding: var(--space-md);
+  }
+
+  .wpk-card--pad-lg {
+    padding: var(--space-lg);
+  }
+</style>

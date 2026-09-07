@@ -1,0 +1,96 @@
+---
+// /404 — what a static host serves for a path no route generated. The ways
+// out a MENU cannot give: the site search, and the two destinations a lost
+// visitor actually wants.
+import { Button, Heading, Section, Text } from "@wpk/ui";
+
+import SearchForm from "../components/content/SearchForm.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import { loadSiteData } from "../routing/site-routes.ts";
+
+const site = await loadSiteData();
+const postsArchive = site.postsArchive;
+const waysOut = [
+  { href: "/", label: "Home" },
+  ...(postsArchive && postsArchive.path !== "/"
+    ? [{ href: postsArchive.path, label: postsArchive.title }]
+    : []),
+];
+---
+
+<BaseLayout
+  title={`Page not found – ${SITE_NAME}`}
+  description={`Nothing is published at this address on ${SITE_NAME}. Search the site or start again from the home page.`}
+>
+  <Section gap="none">
+    <div class="wpk-notfound">
+      <p class="wpk-notfound__mark" aria-hidden="true">404</p>
+      <Heading as="h1" size="xl">This page has moved on</Heading>
+      <Text tone="muted" class="wpk-notfound__lede">
+        Nothing is published at this address. Search for what you were after, or
+        pick up from one of these.
+      </Text>
+      <div class="wpk-notfound__search">
+        <SearchForm
+          id="wpk-notfound-search"
+          variant="band"
+          label={`Search ${SITE_NAME}`}
+          placeholder="Search…"
+        />
+      </div>
+      <ul role="list" class="wpk-notfound__ways">
+        {
+          waysOut.map((way) => (
+            <li>
+              <Button href={way.href} variant="secondary">
+                {way.label}
+              </Button>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </Section>
+</BaseLayout>
+
+<style>
+  .wpk-notfound {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding-block: var(--space-2xl);
+    text-align: center;
+  }
+
+  .wpk-notfound__mark {
+    margin: 0;
+    color: var(--color-primary);
+    font-family: var(--font-family-heading);
+    font-size: clamp(6rem, 4rem + 10vw, 12rem);
+    font-weight: var(--font-weight-bold);
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+
+  .wpk-notfound__lede {
+    max-inline-size: 44ch;
+  }
+
+  .wpk-notfound__search {
+    inline-size: 100%;
+    max-inline-size: 34rem;
+    margin-block: var(--space-lg) var(--space-xl);
+  }
+
+  .wpk-notfound__ways {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>

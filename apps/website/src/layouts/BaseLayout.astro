@@ -1,0 +1,174 @@
+---
+// BaseLayout — the shared page shell. It owns the document, the head, the
+// token stylesheet (loaded by importing the design system), the page
+// skeleton, and the one piece of data every page needs: the site chrome
+// menus.
+//
+// The head is computed, not written out here: everything that needs an
+// absolute URL is absent until an origin exists, and `rendering/head-model.ts`
+// is the one place that knows which tags those are. The robots directive is
+// the launch switch's answer, applied.
+import "@wpk/ui";
+import { getCollection } from "astro:content";
+
+import PageContainer from "../components/layout/PageContainer.astro";
+import SiteFooter from "../components/layout/SiteFooter.astro";
+import SiteHeader from "../components/layout/SiteHeader.astro";
+import { defaultLocale } from "../content-model/shared.ts";
+import {
+  robotsDirective,
+  siteEnvironment,
+} from "../deployment/site-environment.ts";
+import {
+  breadcrumbListJsonLd,
+  canonicalUrl,
+  socialTags,
+} from "../rendering/head-model.ts";
+import { buildMenu } from "../rendering/navigation-model.ts";
+import { siteOrigin } from "../rendering/site-identity.ts";
+
+interface Props {
+  /** Document title. Required: an untitled page is a bug, not a default. */
+  title: string;
+  description?: string;
+  /** Canonical, when an SEO override row supplies one. */
+  canonical?: string;
+  ogImage?: { url: string; alt?: string };
+  /** Document language. Defaults to the content model's default locale. */
+  lang?: string;
+  ogType?: "website" | "article";
+  articleTimes?: { published: string; modified?: string };
+  /** Structured data for this page, already built by `head-model.ts`. */
+  jsonLd?: Record<string, unknown> | readonly Record<string, unknown>[];
+  /** The trail this page renders, for `BreadcrumbList` structured data. */
+  crumbs?: readonly { label: string; href?: string }[];
+  /** Whether the site header sticks to the top of the viewport. */
+  stickyHeader?: boolean;
+}
+
+const {
+  title,
+  description,
+  canonical,
+  ogImage,
+  lang = defaultLocale,
+  ogType,
+  articleTimes,
+  jsonLd,
+  crumbs,
+  stickyHeader = true,
+} = Astro.props;
+
+const headInput = {
+  title,
+  description,
+  canonical,
+  ogImage,
+  ogType,
+  articleTimes,
+  locale: lang,
+  pathname: Astro.url.pathname,
+};
+const social = socialTags(headInput);
+const canonicalHref = canonicalUrl(headInput);
+
+const structuredData = [
+  ...(jsonLd === undefined ? [] : Array.isArray(jsonLd) ? jsonLd : [jsonLd]),
+  ...(crumbs === undefined
+    ? []
+    : [breadcrumbListJsonLd(crumbs, siteOrigin())].filter(
+        (document): document is Record<string, unknown> =>
+          document !== undefined,
+      )),
+];
+
+const environment = siteEnvironment();
+const robots = robotsDirective(Astro.url.pathname, environment);
+
+const menus = await getCollection("navigation");
+const menuOptions = {
+  locale: lang,
+  defaultLocale,
+  pathname: Astro.url.pathname,
+};
+const headerItems = buildMenu(menus, "header", menuOptions);
+const headerActions = buildMenu(menus, "header-actions", menuOptions);
+const footerItems = buildMenu(menus, "footer", menuOptions);
+const footerLegal = buildMenu(menus, "footer-legal", menuOptions);
+---
+
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {description && <meta name="description" content={description} />}
+    {canonicalHref && <link rel="canonical" href={canonicalHref} />}
+    {
+      social.map((tag) =>
+        tag.attribute === "property" ? (
+          <meta property={tag.key} content={tag.content} />
+        ) : (
+          <meta name={tag.key} content={tag.content} />
+        ),
+      )
+    }
+    {
+      structuredData.map((document) => (
+        <script
+          is:inline
+          type="application/ld+json"
+          set:html={JSON.stringify(document)}
+        />
+      ))
+    }
+    <meta name="robots" content={robots} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <a class="wpk-skip-link" href="#main">Skip to content</a>
+    <SiteHeader
+      items={headerItems}
+      actions={headerActions}
+      sticky={stickyHeader}
+    />
+
+    <PageContainer>
+      <slot />
+    </PageContainer>
+
+    <SiteFooter
+      items={footerItems}
+      legal={footerLegal}
+      preview={environment === "preview"}
+    />
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    min-block-size: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-md);
+    line-height: var(--line-height-normal);
+  }
+
+  .wpk-skip-link {
+    position: absolute;
+    inset-block-start: -100%;
+    inset-inline-start: var(--space-sm);
+    z-index: 1;
+    padding: var(--space-2xs) var(--space-sm);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  /* Reveal only; the ring is the design system's (focus.css). */
+  .wpk-skip-link:focus-visible {
+    inset-block-start: var(--space-sm);
+  }
+</style>

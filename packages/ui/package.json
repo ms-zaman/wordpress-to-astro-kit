@@ -1,0 +1,22 @@
+{
+  "name": "@wpk/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Foundation layer of the component system: the primitives every page and section is built from. Loads the design tokens and the two global rules (box model, focus ring).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@wpk/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@wpk/config": "workspace:*",
+    "astro": "^7.3.1",
+    "typescript": "^5.9.3"
+  }
+}

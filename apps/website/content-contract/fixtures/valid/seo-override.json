@@ -1,0 +1,13 @@
+{
+  "path": "/blog/",
+  "locale": "en",
+  "metaTitle": "The blog",
+  "metaDescription": "Every post, newest first.",
+  "canonical": "/blog/",
+  "robots": { "noindex": false },
+  "source": {
+    "system": "wordpress",
+    "sourceId": "seo:/blog/",
+    "capturedAt": "2026-01-16"
+  }
+}

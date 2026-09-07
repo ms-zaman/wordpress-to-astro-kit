@@ -1,0 +1,6 @@
+{
+  "slug": "header-actions",
+  "name": { "en": "Header calls to action (sample)" },
+  "source": { "system": "sample" },
+  "items": [{ "label": { "en": "Get in touch" }, "href": "/contact/" }]
+}

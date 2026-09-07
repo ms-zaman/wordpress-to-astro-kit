@@ -1,0 +1,11 @@
+{
+  "kind": "clusters",
+  "entries": [
+    {
+      "collection": "pages",
+      "slug": "ueber",
+      "locale": "de",
+      "cluster": "pages/about"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "slug": "no-author",
+  "title": "No author",
+  "locale": "en",
+  "cluster": "posts/no-author",
+  "updatedAt": "2026-01-01",
+  "publishedAt": "2026-01-01",
+  "categories": ["news"],
+  "source": { "system": "authored" }
+}

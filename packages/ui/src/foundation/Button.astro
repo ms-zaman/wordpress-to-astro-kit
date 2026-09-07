@@ -1,0 +1,139 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Button — the primary interaction primitive. Renders a <button>, or an <a>
+ * styled as a button when `href` is given. Variants are token-driven; no
+ * business logic.
+ *
+ * `disabled` belongs to the button branch only. A disabled link is not a
+ * thing HTML has: an `<a>` with `aria-disabled` and `pointer-events: none`
+ * keeps its href, stays in the tab order and still follows on Enter — a
+ * control painted as unavailable that is reachable and operable by keyboard.
+ * So `href` and `disabled` together are a type error and a build-time throw.
+ * Render nothing, render text, or render a real `<button disabled>`.
+ */
+type ButtonProps = HTMLAttributes<"button"> & {
+  /** Never set on this branch — `href` is what selects the anchor. */
+  href?: undefined;
+  /** Visual variant. Defaults to primary. */
+  variant?: "primary" | "secondary" | "ghost";
+  /** Size. Defaults to md. */
+  size?: "md" | "lg";
+};
+
+type AnchorProps = Omit<HTMLAttributes<"a">, "disabled"> & {
+  /** When set, renders an anchor styled as a button. */
+  href: string;
+  /** Not available on a link — see the component note. */
+  disabled?: never;
+  variant?: "primary" | "secondary" | "ghost";
+  size?: "md" | "lg";
+};
+
+type Props = ButtonProps | AnchorProps;
+
+const {
+  href,
+  variant = "primary",
+  size = "md",
+  type = "button",
+  disabled = false,
+  class: className,
+  ...rest
+} = Astro.props as ButtonProps & { href?: string };
+
+if (href !== undefined && disabled)
+  throw new Error(
+    "Button: `disabled` is not available on the link branch. A disabled " +
+      "link keeps its href, stays in the tab order and still follows on " +
+      "Enter. Render nothing, render text, or render a real <button disabled>.",
+  );
+
+const anchorRest = rest as HTMLAttributes<"a">;
+const classes = [
+  "wpk-button",
+  `wpk-button--${variant}`,
+  `wpk-button--${size}`,
+  className,
+];
+---
+
+{
+  href ? (
+    <a class:list={classes} href={href} {...anchorRest}>
+      <slot />
+    </a>
+  ) : (
+    <button class:list={classes} type={type} disabled={disabled} {...rest}>
+      <slot />
+    </button>
+  )
+}
+
+<style>
+  .wpk-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    border: var(--border-width) solid transparent;
+    border-radius: var(--radius-full);
+    font-family: var(--font-family-base);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--transition-fast),
+      border-color var(--transition-fast),
+      color var(--transition-fast);
+  }
+
+  .wpk-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .wpk-button--md {
+    padding: 0.75rem var(--space-lg);
+    font-size: var(--font-size-body-md);
+  }
+
+  .wpk-button--lg {
+    padding: var(--space-md) var(--space-xl);
+    font-size: var(--font-size-body-md);
+    line-height: 1.3125;
+  }
+
+  .wpk-button--primary {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary-strong);
+    color: var(--color-text-inverse);
+  }
+
+  .wpk-button--primary:hover:not(:disabled) {
+    background-color: var(--color-primary-strong);
+  }
+
+  .wpk-button--secondary {
+    background-color: var(--color-background);
+    border-color: var(--color-border-interactive);
+    color: var(--color-text);
+  }
+
+  .wpk-button--secondary:hover:not(:disabled) {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-text-inverse);
+  }
+
+  .wpk-button--ghost {
+    background-color: transparent;
+    color: var(--color-link);
+  }
+
+  .wpk-button--ghost:hover:not(:disabled) {
+    background-color: var(--color-surface);
+  }
+</style>

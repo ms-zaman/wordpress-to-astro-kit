@@ -1,0 +1,40 @@
+---
+// Every page, post and archive, at the path the permalink patterns give it.
+// One route module, one resolver: adding an entry adds a page and changes no
+// code, and changing a permalink pattern moves every page without renaming a
+// file. `/` is `index.astro`'s.
+import ArchivePage from "../templates/ArchivePage.astro";
+import ContentPage from "../templates/ContentPage.astro";
+import PostPage from "../templates/PostPage.astro";
+import { routeParam, type SiteRoute } from "../routing/resolver.ts";
+import {
+  loadSiteData,
+  type PageEntry,
+  type PostEntry,
+} from "../routing/site-routes.ts";
+
+export async function getStaticPaths() {
+  const site = await loadSiteData();
+  return site.routes.map((route) => ({
+    params: { path: routeParam(route.path) },
+    props: { route },
+  }));
+}
+
+type Props = { route: SiteRoute<PostEntry, PageEntry> };
+
+const { route } = Astro.props;
+// Read again rather than passed as a prop: the table carries functions, and
+// Astro caches the collections, so this is a cache hit.
+const site = await loadSiteData();
+---
+
+{
+  route.kind === "post" ? (
+    <PostPage route={route} site={site} />
+  ) : route.kind === "page" ? (
+    <ContentPage route={route} site={site} />
+  ) : (
+    <ArchivePage route={route} site={site} />
+  )
+}

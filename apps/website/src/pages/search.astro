@@ -1,0 +1,268 @@
+---
+// /search — the discovery surface. The page is static and the query runs in
+// the browser: one inline island fetches the static index at
+// `/search-index.json` on first use and runs `search-core.js` — the same
+// matcher the rendering contract executes — against it. The form is a real
+// `GET`, so a reader without the script still lands on a page that names
+// their query in the URL, and a deep link with `?q=` runs on load.
+//
+// No provider, no dependency, no network beyond the site's own JSON.
+import { Heading, Section, Text } from "@wpk/ui";
+
+import searchCore from "../search/search-core.js?raw";
+import searchIsland from "../search/search-island.js?raw";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import SearchForm from "../components/content/SearchForm.astro";
+import { CONTENT_KINDS } from "../content-index/entry-model.ts";
+import { pageCrumbs } from "../content-index/wayfinding.ts";
+import {
+  SEARCH_INDEX_PATH,
+  SEARCH_ROUTE,
+} from "../deployment/route-inventory.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import { loadSiteData } from "../routing/site-routes.ts";
+
+// The island is the core (exports stripped — it runs as a script, not a
+// module) followed by the controller, wrapped in one function scope.
+const islandCode =
+  "(function(){\n" +
+  searchCore.replace(/^export (?=(?:const|function)\b)/gm, "") +
+  "\n" +
+  searchIsland +
+  "\n})();";
+
+const labels = Object.fromEntries(
+  CONTENT_KINDS.map((binding) => [binding.kind, binding.singular]),
+);
+
+const site = await loadSiteData();
+const seo = seoMetadata(
+  {
+    title: `Search – ${SITE_NAME}`,
+    description: `Search every post and page on ${SITE_NAME}.`,
+  },
+  findOverride(site.overrides, SEARCH_ROUTE, site.locale),
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+>
+  <div
+    data-wpk-search
+    data-wpk-search-index={SEARCH_INDEX_PATH}
+    data-wpk-search-labels={JSON.stringify(labels)}
+  >
+    <Section gap="sm">
+      <Breadcrumbs crumbs={pageCrumbs("Search")} />
+      <Heading as="h1" size="xl" class="wpk-search-hero__title">Search</Heading>
+      <Text size="lg" tone="muted" class="wpk-search-hero__lead">
+        Every post and page, in one place.
+      </Text>
+      <SearchForm
+        variant="band"
+        label="Search the site"
+        placeholder="Search…"
+      />
+    </Section>
+
+    <Section gap="sm">
+      <div
+        class="wpk-search-chips"
+        role="group"
+        aria-label="Filter results by section"
+      >
+        <button
+          class="wpk-search-chip"
+          type="button"
+          data-wpk-search-kind="all"
+          aria-pressed="true"
+        >
+          All
+        </button>
+        {
+          CONTENT_KINDS.map((binding) => (
+            <button
+              class="wpk-search-chip"
+              type="button"
+              data-wpk-search-kind={binding.kind}
+              aria-pressed="false"
+            >
+              {binding.label}
+              <span class="wpk-search-chip__count" data-wpk-search-count />
+            </button>
+          ))
+        }
+      </div>
+
+      <p
+        class="wpk-search-status"
+        data-wpk-search-status
+        role="status"
+        aria-live="polite"
+      >
+        Type a word or two above to search the site.
+      </p>
+
+      <noscript>
+        <Text tone="muted">
+          Search runs in your browser and needs JavaScript. Without it, browse
+          the site from the menu.
+        </Text>
+      </noscript>
+
+      <ol role="list" class="wpk-search-results" data-wpk-search-results></ol>
+
+      <button class="wpk-search-more" type="button" data-wpk-search-more hidden>
+        Show more
+      </button>
+    </Section>
+  </div>
+
+  <script is:inline data-wpk-island="search" set:html={islandCode} />
+</BaseLayout>
+
+<style>
+  .wpk-search-hero__title,
+  .wpk-search-hero__lead {
+    text-align: center;
+  }
+
+  .wpk-search-hero__lead {
+    margin-block-end: var(--space-md);
+  }
+
+  .wpk-search-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+
+  .wpk-search-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-full);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.4;
+    cursor: pointer;
+  }
+
+  .wpk-search-chip[aria-pressed="true"] {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-text-inverse);
+  }
+
+  .wpk-search-chip__count:empty {
+    display: none;
+  }
+
+  .wpk-search-chip__count {
+    padding: 0 0.4em;
+    border-radius: var(--radius-full);
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-size: var(--font-size-caption);
+  }
+
+  .wpk-search-status {
+    margin-block: 0;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-md);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-search-results {
+    margin-block: 0;
+    padding-inline-start: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .wpk-search-results:empty {
+    display: none;
+  }
+
+  .wpk-search-results :global(.wpk-search-result__link) {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-md) var(--space-lg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-background);
+    color: inherit;
+    text-decoration: none;
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .wpk-search-results :global(.wpk-search-result__link:hover),
+  .wpk-search-results :global(.wpk-search-result__link:focus-visible) {
+    border-color: var(--color-border-interactive);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .wpk-search-results :global(.wpk-search-result__kind) {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-caption);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-link);
+  }
+
+  .wpk-search-results :global(.wpk-search-result__title) {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-card);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-snug);
+    color: var(--color-text);
+  }
+
+  .wpk-search-results
+    :global(.wpk-search-result__link:hover .wpk-search-result__title) {
+    text-decoration: underline;
+  }
+
+  .wpk-search-results :global(.wpk-search-result__summary) {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    line-height: var(--line-height-normal);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-search-results :global(.wpk-search-result__meta) {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-search-more {
+    align-self: flex-start;
+    padding: 0.625rem 1.25rem;
+    border: var(--border-width) solid var(--color-border-interactive);
+    border-radius: var(--radius-full);
+    background-color: var(--color-background);
+    color: var(--color-link);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+  }
+</style>

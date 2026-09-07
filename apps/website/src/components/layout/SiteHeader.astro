@@ -1,0 +1,234 @@
+---
+// SiteHeader. Its links come from `content/navigation/header.json` and its
+// calls to action from `header-actions.json`, through
+// `rendering/navigation-model.ts`: navigation data is content, and the chrome
+// consumes it as data rather than hard-coding it. The two are separate menus
+// because they are separate decisions — a link is added to the site, a call
+// to action is a campaign — and because a CTA is a button, not a list item in
+// a nav landmark.
+//
+// The brand is the site's name from `content/config/site.json`, or the logo
+// it names. The mobile toggle is a checkbox and a `<label for>`: it starts
+// unchecked and therefore closed, it is native, script-free and
+// keyboard-operable (Space toggles it), and it is announced as a checkbox
+// rather than as a disclosure — the whole of what is lost, and a menu that
+// opens over the first screen loses more.
+import { Button, Container } from "@wpk/ui";
+
+import Navigation from "./Navigation.astro";
+import type { NavigationNode } from "../../rendering/navigation-model.ts";
+import { SITE_NAME, site } from "../../rendering/site-identity.ts";
+
+interface Props {
+  items: readonly NavigationNode[];
+  actions?: readonly NavigationNode[];
+  /** Whether the header sticks to the top of the viewport. */
+  sticky?: boolean;
+}
+
+const { items, actions = [], sticky = true } = Astro.props;
+---
+
+<header class:list={["wpk-site-header", !sticky && "wpk-site-header--static"]}>
+  <Container>
+    <div class="wpk-site-header__bar">
+      <a class="wpk-site-header__brand" href="/">
+        {
+          site.logo ? (
+            <img src={site.logo} alt={SITE_NAME} height="40" loading="eager" />
+          ) : (
+            <span class="wpk-site-header__wordmark">{SITE_NAME}</span>
+          )
+        }
+      </a>
+
+      <input
+        class="wpk-site-header__toggle-input"
+        type="checkbox"
+        id="wpk-site-menu"
+      />
+      <label class="wpk-site-header__toggle" for="wpk-site-menu">
+        <span class="wpk-site-header__bars" aria-hidden="true"></span>
+        <span class="wpk-site-header__toggle-text">Menu</span>
+      </label>
+
+      <div class="wpk-site-header__panel">
+        <Navigation items={items} label="Main" />
+        {
+          actions.length > 0 && (
+            <div class="wpk-site-header__actions">
+              {actions.map((action, index) => (
+                <Button
+                  href={action.href}
+                  variant={
+                    index === actions.length - 1 ? "primary" : "secondary"
+                  }
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    </div>
+  </Container>
+</header>
+
+<style>
+  .wpk-site-header {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 10;
+    padding-block: var(--space-md);
+    padding-inline: var(--gutter);
+    background-color: var(--color-background);
+  }
+
+  .wpk-site-header--static {
+    position: static;
+  }
+
+  .wpk-site-header__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius-full);
+    background-color: var(--color-background);
+    box-shadow: var(--shadow-chrome);
+  }
+
+  .wpk-site-header__brand {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-end: auto;
+    color: var(--color-text);
+    text-decoration: none;
+  }
+
+  .wpk-site-header__brand img {
+    display: block;
+    block-size: 2.5rem;
+    inline-size: auto;
+  }
+
+  .wpk-site-header__wordmark {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-body-lg);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--letter-spacing-display);
+  }
+
+  /* Visually hidden, NOT removed: the input is what the keyboard operates
+     and what carries focus, so it keeps a box and stays in the accessibility
+     tree. In flow, because an absolute box resolves against the initial
+     containing block and grows the document's scrollWidth. */
+  .wpk-site-header__toggle-input {
+    display: inline-block;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* A 40px square: over the 24x24 minimum WCAG 2.5.8 asks of a target. */
+  .wpk-site-header__toggle {
+    display: none;
+    place-items: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border: var(--border-width) solid var(--color-border-interactive);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+  }
+
+  /* The ring belongs to the input, which is a 1px box, so the label wears it. */
+  .wpk-site-header__toggle-input:focus-visible + .wpk-site-header__toggle {
+    outline: var(--focus-width) var(--focus-style) var(--focus-color);
+    outline-offset: var(--focus-offset);
+  }
+
+  .wpk-site-header__bars,
+  .wpk-site-header__bars::before,
+  .wpk-site-header__bars::after {
+    display: block;
+    inline-size: 1.125rem;
+    block-size: 2px;
+    background-color: currentcolor;
+  }
+
+  .wpk-site-header__bars {
+    position: relative;
+  }
+
+  .wpk-site-header__bars::before,
+  .wpk-site-header__bars::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+  }
+
+  .wpk-site-header__bars::before {
+    inset-block-start: -0.375rem;
+  }
+
+  .wpk-site-header__bars::after {
+    inset-block-start: 0.375rem;
+  }
+
+  /* The name is not lost, only unpainted: the label still carries it for
+     assistive technology, and the bars stay `aria-hidden` decoration. */
+  .wpk-site-header__toggle-text {
+    display: inline-block;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .wpk-site-header__panel {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-lg);
+  }
+
+  .wpk-site-header__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  /* Below the menu breakpoint the bar is brand + toggle, and the panel
+     appears only when the toggle is checked. 1024px is `breakpoints.tablet`
+     from @wpk/tokens, restated as a literal. */
+  @media (max-width: 1024px) {
+    .wpk-site-header__toggle {
+      display: grid;
+    }
+
+    .wpk-site-header__bar {
+      border-radius: var(--radius-md);
+    }
+
+    .wpk-site-header__panel {
+      display: none;
+      flex-basis: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-md);
+      padding-block-start: var(--space-sm);
+    }
+
+    .wpk-site-header__toggle-input:checked ~ .wpk-site-header__panel {
+      display: flex;
+    }
+  }
+</style>

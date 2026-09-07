@@ -1,0 +1,11 @@
+{
+  "slug": "unsourced",
+  "title": "Unsourced",
+  "locale": "en",
+  "cluster": "posts/unsourced",
+  "updatedAt": "2026-01-01",
+  "publishedAt": "2026-01-01",
+  "author": "jane-doe",
+  "categories": ["news"],
+  "source": { "system": "wordpress" }
+}

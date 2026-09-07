@@ -1,0 +1,169 @@
+/*
+ * Design tokens — the values every component reads and nothing hard-codes.
+ *
+ * EVERY VALUE BELOW IS PROVISIONAL. They are neutral defaults chosen so the
+ * kit builds and passes its own contrast floor on day one. They are not a
+ * design. Replace them with values MEASURED from the site you are migrating
+ * (or from its design source), record the measurement in
+ * `docs/01-discovery/presentation-layer.md`, and delete the marker as you go.
+ * Measuring is Discovery step 1.4 in PLAYBOOK.md — do it before building a
+ * page on these numbers, because every page built on a guessed token is a
+ * page built twice.
+ *
+ * Rules:
+ *   - semantic names only: `--color-primary`, never `--color-blue`;
+ *   - a colour that is READ as text on a ground is a contrast PAIR, and the
+ *     accessibility audit holds every pair to 4.5:1 (3:1 for a control's
+ *     boundary) — a token that fails is a defect, not a preference;
+ *   - breakpoints are NOT here: custom properties are invalid inside media
+ *     queries, so they live in `src/index.ts`.
+ */
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* Colour — semantic roles                                             */
+  /* ------------------------------------------------------------------ */
+
+  /* Brand fill: the primary call to action. provisional */
+  --color-primary: #1d4ed8;
+  /* Hover/active step of the same hue. provisional */
+  --color-primary-strong: #1e40af;
+  /* The dark band, and the ground `--color-text-inverse` is read on. provisional */
+  --color-secondary: #0f172a;
+
+  --color-background: #ffffff; /* provisional */
+  /* A panel or a card. provisional */
+  --color-surface: #f5f7fa;
+  /* A full-bleed tinted band, a shade cooler than a panel. provisional */
+  --color-surface-band: #eef2f7;
+
+  --color-text: #111827; /* provisional */
+  --color-text-muted: #4b5563; /* provisional */
+  --color-text-inverse: #ffffff; /* provisional */
+
+  /* The brand colour AS TEXT. Kept separate from `--color-primary` because a
+     fill and a text colour need different contrast floors. provisional */
+  --color-link: #1d4ed8;
+
+  /* Decorative hairlines — never an interactive control's boundary. provisional */
+  --color-border: #d1d5db;
+  /* A control's boundary: held to 3:1 on the grounds it sits on. provisional */
+  --color-border-interactive: #64748b;
+
+  /* Feedback. Each clears 4.5:1 as white-on-fill and as text-on-white. provisional */
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-error: #b91c1c;
+
+  /* WordPress core's preset palette — constants, not design. A migrated body
+     carries WordPress's preset CLASSES (`has-vivid-cyan-blue-color`,
+     `has-white-background-color`, …) and these are the values core assigns
+     them. Without them the classes paint nothing: preset-tinted paragraphs
+     render unpainted and preset buttons render white on white. */
+  --wp-preset-white: #ffffff;
+  --wp-preset-black: #000000;
+  --wp-preset-cyan-bluish-gray: #abb8c3;
+  --wp-preset-pale-pink: #f78da7;
+  --wp-preset-vivid-red: #cf2e2e;
+  --wp-preset-luminous-vivid-orange: #ff6900;
+  --wp-preset-luminous-vivid-amber: #fcb900;
+  --wp-preset-light-green-cyan: #7bdcb5;
+  --wp-preset-vivid-green-cyan: #00d084;
+  --wp-preset-pale-cyan-blue: #8ed1fc;
+  --wp-preset-vivid-cyan-blue: #0693e3;
+  --wp-preset-vivid-purple: #9b51e0;
+  /* `wp-element-button`'s default fill when no preset is declared. */
+  --wp-button-default: #32373c;
+
+  /* ------------------------------------------------------------------ */
+  /* Typography                                                          */
+  /* ------------------------------------------------------------------ */
+
+  /* The system stack until a face is delivered from fonts.css. provisional */
+  --font-family-base:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-heading: var(--font-family-base); /* provisional */
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Body roles are fixed sizes; heading roles are fluid between a phone
+     minimum and a desktop maximum. Every clamp here is provisional: the
+     right shape is the line through the live site's own rendered size at
+     375px and at 1440px. */
+  --font-size-caption: 0.75rem;
+  --font-size-body-sm: 0.875rem;
+  --font-size-body-md: 1rem;
+  --font-size-body-lg: 1.125rem;
+  /* A card title in a listing — the smallest heading role. provisional */
+  --font-size-heading-card: 1.125rem;
+  --font-size-heading-sm: clamp(1.25rem, 1.162rem + 0.3756vw, 1.5rem);
+  --font-size-heading-md: clamp(1.5rem, 1.324rem + 0.751vw, 2rem);
+  --font-size-heading-lg: clamp(1.75rem, 1.2rem + 2.2vw, 3rem);
+  --font-size-heading-xl: clamp(2rem, 1.2rem + 3.5vw, 4rem);
+
+  /* Display tracking, held as an em so it follows the fluid size. provisional */
+  --letter-spacing-display: -0.0125em;
+
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.6;
+
+  /* ------------------------------------------------------------------ */
+  /* Spacing — a 0.25rem scale                                           */
+  /* ------------------------------------------------------------------ */
+
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+  /* The vertical rhythm between page bands, fluid. Measure it as the GAP a
+     reader sees between two bands on the live site at 375 and at 1440 — the
+     bottom padding of one plus the top padding of the next. provisional */
+  --space-section: clamp(4rem, 2.5rem + 4vw, 7rem);
+
+  /* ------------------------------------------------------------------ */
+  /* Layout                                                              */
+  /* ------------------------------------------------------------------ */
+
+  /* The content cap, applied to an element with NO padding of its own, so
+     the number means what it says (the gutter belongs to the wrapper). Keep
+     it in step with `containerMaxWidth` in index.ts. provisional */
+  --container-max-width: 75rem;
+  /* The space a full-bleed wrapper holds open around a Container. provisional */
+  --gutter: 1.25rem;
+  /* Reading measure for prose. Measure the live article body's line length. provisional */
+  --measure: 70ch;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+  --radius-full: 9999px;
+
+  --border-width: 1px;
+  --transition-fast: 150ms ease;
+
+  /* ------------------------------------------------------------------ */
+  /* Elevation — shadows are not colours; the palette reader skips them  */
+  /* ------------------------------------------------------------------ */
+
+  --shadow-raised: 0 13px 25px 0 rgba(15, 23, 42, 0.07); /* provisional */
+  --shadow-panel: 0 6px 54px 0 rgba(15, 23, 42, 0.08); /* provisional */
+  --shadow-chrome: 0 4px 24px 0 rgba(0, 0, 0, 0.08); /* provisional */
+  --shadow-flyout: 0 10px 30px 0 rgba(0, 0, 0, 0.1); /* provisional */
+
+  /* ------------------------------------------------------------------ */
+  /* Focus — the design system's one universal ring (ui/focus.css)      */
+  /* ------------------------------------------------------------------ */
+
+  --focus-width: 2px;
+  --focus-style: solid;
+  --focus-color: var(--color-primary);
+  --focus-offset: 2px;
+}

@@ -1,0 +1,20 @@
+{
+  "slug": "footer",
+  "name": { "en": "Footer menu (sample)" },
+  "source": { "system": "sample" },
+  "items": [
+    {
+      "label": { "en": "Site" },
+      "href": "/",
+      "children": [
+        { "label": { "en": "Blog" }, "href": "/blog/" },
+        { "label": { "en": "About" }, "href": "/about/" }
+      ]
+    },
+    {
+      "label": { "en": "Help" },
+      "href": "/contact/",
+      "children": [{ "label": { "en": "Search" }, "href": "/search/" }]
+    }
+  ]
+}

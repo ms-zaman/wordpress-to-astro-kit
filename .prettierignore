@@ -1,0 +1,21 @@
+# Evidence, decisions, and governance records are not code surfaces.
+# Raw research artifacts must never be reformatted (AGENTS.md §7);
+# docs/ and decisions/ are prose records, not build inputs.
+research/
+docs/
+decisions/
+AGENTS.md
+PLAYBOOK.md
+CHECKLIST.md
+
+# Migrated bodies are the source site's rendered HTML, carried verbatim so the
+# reconciler can compare our page to the source's. A formatter rewriting them,
+# however harmlessly, ends that. Same principle as `research/` above.
+content/blog/posts/
+content/pages/
+
+# Generated / vendored
+node_modules/
+dist/
+.astro/
+pnpm-lock.yaml

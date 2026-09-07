@@ -1,0 +1,132 @@
+---
+// An archive, rendered: the posts index, a category, a tag or an author
+// archive — one page of it, with the trail, the title, the tiles and the
+// pagination. An empty archive renders its empty state rather than failing.
+import { Heading, Section, Text } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import PaginationNav from "../components/content/PaginationNav.astro";
+import PostList, { type PostCard } from "../components/content/PostList.astro";
+import { pageCrumbs, trailCrumbs } from "../content-index/wayfinding.ts";
+import { firstProseParagraph, textOf } from "../rendering/post-view.ts";
+import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
+import { truncateAtWord } from "../rendering/portable-body.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import { authorPath } from "../routing/permalink.ts";
+import type { ArchiveRoute } from "../routing/resolver.ts";
+import type { PageEntry, PostEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: ArchiveRoute<PostEntry, PageEntry>;
+  site: SiteData;
+  jsonLd?: Record<string, unknown>;
+}
+
+const { route, site, jsonLd } = Astro.props;
+const { page } = route;
+
+const postsLabel = site.postsArchive?.title ?? "Posts";
+
+const crumbs =
+  route.archive === "posts"
+    ? pageCrumbs(route.title)
+    : trailCrumbs([{ label: postsLabel, href: site.postsIndex }], route.title);
+
+const cards: PostCard[] = page.items.map((post) => {
+  const author = site.authorOf(post.data.author);
+  return {
+    href: site.hrefOf("post", post.data.slug) ?? "#",
+    title: post.data.title,
+    publishedAt: post.data.publishedAt,
+    featuredImage: post.data.featuredImage,
+    author: author
+      ? {
+          name: author.name,
+          href: authorPath(author.nicename ?? author.slug),
+          avatar: author.avatar,
+        }
+      : undefined,
+  };
+});
+
+const emptyMessage =
+  route.archive === "posts"
+    ? "No posts have been published yet."
+    : route.archive === "author"
+      ? `${route.title} has not published any posts yet.`
+      : `No posts are filed under ${route.title} yet.`;
+
+const intro =
+  route.archive === "author"
+    ? route.author?.bio
+    : route.indexPage
+      ? route.indexPage.data.excerpt
+        ? textOf(route.indexPage.data.excerpt)
+        : firstProseParagraph(route.indexPage.body)
+      : undefined;
+
+const baseTitle =
+  route.path === "/" ? SITE_NAME : `${route.title} – ${SITE_NAME}`;
+const seo = seoMetadata(
+  {
+    title:
+      page.page > 1
+        ? `${route.title} – page ${page.page} – ${SITE_NAME}`
+        : baseTitle,
+    description: truncateAtWord(
+      intro && intro !== ""
+        ? intro
+        : route.archive === "posts"
+          ? `Every post published on ${SITE_NAME}, newest first.`
+          : route.archive === "author"
+            ? `Posts by ${route.title} on ${SITE_NAME}.`
+            : `Posts filed under ${route.title} on ${SITE_NAME}.`,
+      META_DESCRIPTION_MAX,
+    ),
+  },
+  findOverride(site.overrides, route.path, site.locale),
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={site.locale}
+  crumbs={route.path === "/" ? undefined : crumbs}
+  jsonLd={jsonLd}
+>
+  <Section gap="lg">
+    <div class="wpk-archive__head">
+      {route.path !== "/" && <Breadcrumbs crumbs={crumbs} />}
+      <Heading as="h1" size="xl">{route.title}</Heading>
+      {
+        intro && (
+          <Text size="lg" tone="muted">
+            {intro}
+          </Text>
+        )
+      }
+      {
+        page.page > 1 && (
+          <Text size="sm" tone="muted">
+            Page {page.page} of {page.pageCount}
+          </Text>
+        )
+      }
+    </div>
+    <PostList posts={cards} locale={site.locale} emptyMessage={emptyMessage} />
+    <PaginationNav page={page} base={route.base} />
+  </Section>
+</BaseLayout>
+
+<style>
+  .wpk-archive__head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+</style>

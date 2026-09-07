@@ -1,0 +1,38 @@
+{
+  "name": "wordpress-to-astro-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A boilerplate and a procedure for migrating a WordPress site to Astro: discovery and capture tooling, content contracts, quality gates, and a minimal Astro app with the launch seams in place.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "kit": {
+    "prefix": "wpk"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @wpk/website dev",
+    "build": "pnpm --filter @wpk/website build",
+    "preview": "pnpm build && pnpm --filter @wpk/website preview",
+    "check": "pnpm --recursive --if-present run check",
+    "content": "pnpm content:contract && pnpm content:validate",
+    "content:validate": "pnpm --filter @wpk/website content:validate",
+    "content:contract": "pnpm --filter @wpk/website content:contract",
+    "render": "pnpm --filter @wpk/website render:contract",
+    "render:build-audit": "pnpm build && pnpm --filter @wpk/website render:build-audit",
+    "kit:init": "node scripts/kit-init/cli.ts",
+    "kit:init-test": "node scripts/kit-init/test/run.ts",
+    "test:all": "pnpm kit:init-test",
+    "validate": "pnpm lint && pnpm format:check && pnpm check && pnpm content && pnpm render && pnpm render:build-audit && pnpm test:all",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@wpk/config": "workspace:*",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.6"
+  }
+}

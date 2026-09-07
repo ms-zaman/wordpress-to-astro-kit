@@ -1,0 +1,71 @@
+---
+// Breadcrumbs — an ordered list inside a labelled `nav`, with the current
+// page as plain text carrying `aria-current="page"`. A trail whose last item
+// is a link to the page you are already on is the most common breadcrumb
+// defect, and it is invisible without a screen reader.
+import type { Crumb } from "../../content-index/wayfinding.ts";
+
+interface Props {
+  crumbs: readonly Crumb[];
+}
+
+const { crumbs } = Astro.props;
+---
+
+{
+  crumbs.length > 1 && (
+    <nav class="wpk-breadcrumbs" aria-label="Breadcrumb">
+      <ol role="list" class="wpk-breadcrumbs__list">
+        {crumbs.map((crumb) => (
+          <li class="wpk-breadcrumbs__item">
+            {crumb.href && !crumb.current ? (
+              <a class="wpk-breadcrumbs__link" href={crumb.href}>
+                {crumb.label}
+              </a>
+            ) : (
+              <span aria-current={crumb.current ? "page" : undefined}>
+                {crumb.label}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
+<style>
+  .wpk-breadcrumbs__list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2xs);
+    margin-block: 0;
+    padding-inline-start: 0;
+    list-style: none;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+
+  /* The separator is generated content: decoration, so a screen reader does
+     not read a slash between every crumb. */
+  .wpk-breadcrumbs__item + .wpk-breadcrumbs__item::before {
+    content: "/";
+    margin-inline-end: var(--space-2xs);
+    color: var(--color-border);
+  }
+
+  .wpk-breadcrumbs__link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .wpk-breadcrumbs__link:hover {
+    color: var(--color-text);
+  }
+
+  .wpk-breadcrumbs__link:focus-visible {
+    border-radius: var(--radius-sm);
+  }
+</style>

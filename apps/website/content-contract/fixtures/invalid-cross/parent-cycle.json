@@ -1,0 +1,7 @@
+{
+  "kind": "parents",
+  "pages": [
+    { "slug": "a", "locale": "en", "parent": "b" },
+    { "slug": "b", "locale": "en", "parent": "a" }
+  ]
+}

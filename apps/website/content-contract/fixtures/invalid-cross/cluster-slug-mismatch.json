@@ -1,0 +1,17 @@
+{
+  "kind": "clusters",
+  "entries": [
+    {
+      "collection": "pages",
+      "slug": "about",
+      "locale": "en",
+      "cluster": "pages/about"
+    },
+    {
+      "collection": "pages",
+      "slug": "ueber-uns",
+      "locale": "de",
+      "cluster": "pages/about"
+    }
+  ]
+}

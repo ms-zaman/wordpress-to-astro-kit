@@ -1,0 +1,182 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+import Container from "./Container.astro";
+
+/**
+ * Section — one region of a page.
+ *
+ * What it owns: the semantic element, the in-page anchor, the internal gap,
+ * the horizontal gutter, the `Container` that caps its content — and, when a
+ * tone is set, the fill and the padding that fill needs.
+ *
+ * The section is the full-bleed element and the container sits INSIDE it,
+ * which is what makes a band able to paint edge to edge while its content
+ * stays capped. `bleed` moves the surface treatment from the capped inner
+ * element out onto the band.
+ *
+ * A named section is a `region` landmark. `Section` does not invent the name —
+ * it passes `aria-labelledby` straight through, and the section components
+ * supply the id of the heading they already render (`sectionHeadingId`).
+ *
+ * What it deliberately does NOT own: the space BETWEEN sections. Vertical
+ * rhythm is the parent's job (`PageContainer` in the website app), because a
+ * section that carried its own outer spacing would double it against the next
+ * section's and margin-collapse rules would decide the result. One owner, one
+ * gap.
+ */
+interface Props extends HTMLAttributes<"section"> {
+  /** Rendered element. `div` for a region that is not a document section. */
+  as?: "section" | "div" | "article" | "aside";
+  /**
+   * Surface treatment. `surface` fills and pads; `plain` does neither;
+   * `inverse` is the dark band, which inverts its type as well.
+   */
+  tone?: "plain" | "surface" | "inverse";
+  /**
+   * Whether the surface treatment paints edge to edge. `false` fills the capped
+   * inner element (a rounded card at content width); `true` fills the band
+   * itself. No effect when `tone` is `plain`.
+   */
+  bleed?: boolean;
+  /** Whether a BLEEDING band rounds its corners. */
+  rounded?: boolean;
+  /**
+   * How much space the page flow leaves ABOVE this section. `flow` takes the
+   * page rhythm; `hug` cancels it and leaves `--space-lg`, for a band that
+   * belongs to the one above it.
+   */
+  rhythm?: "flow" | "hug";
+  /** Gap between the section's own children. */
+  gap?: "none" | "sm" | "md" | "lg" | "xl";
+  /**
+   * Whether this section caps its own content width. True for a top-level
+   * band; false for a section rendered INSIDE another one.
+   */
+  boxed?: boolean;
+}
+
+const {
+  as: Tag = "section",
+  tone = "plain",
+  gap = "lg",
+  boxed = true,
+  bleed = false,
+  rounded = false,
+  rhythm = "flow",
+  class: className,
+  ...rest
+} = Astro.props;
+
+const Inner = boxed ? Container : "div";
+
+// The tone lives on exactly one of the two elements. Putting it on both would
+// paint the fill twice — once edge to edge and once again as a card inside it.
+const bandTone = bleed ? tone : "plain";
+const innerTone = bleed ? "plain" : tone;
+---
+
+<Tag
+  class:list={[
+    "wpk-section",
+    `wpk-section--${bandTone}`,
+    rounded && bleed && "wpk-section--rounded",
+    rhythm === "hug" && "wpk-section--hug",
+    className,
+  ]}
+  {...rest}
+>
+  <Inner
+    class:list={[
+      "wpk-section__inner",
+      `wpk-section__inner--${innerTone}`,
+      `wpk-section__inner--gap-${gap}`,
+    ]}
+  >
+    <slot />
+  </Inner>
+</Tag>
+
+<style>
+  /* The band. Full width by default, holding the gutter open around the
+     content it caps. */
+  .wpk-section {
+    padding-inline: var(--gutter);
+  }
+
+  .wpk-section__inner {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .wpk-section__inner--gap-none {
+    gap: 0;
+  }
+
+  .wpk-section__inner--gap-sm {
+    gap: var(--space-sm);
+  }
+
+  .wpk-section__inner--gap-md {
+    gap: var(--space-md);
+  }
+
+  .wpk-section__inner--gap-lg {
+    gap: var(--space-lg);
+  }
+
+  .wpk-section__inner--gap-xl {
+    gap: var(--space-xl);
+  }
+
+  .wpk-section__inner--surface {
+    padding: var(--space-xl);
+    background-color: var(--color-surface);
+    border-radius: var(--radius-lg);
+  }
+
+  .wpk-section__inner--inverse {
+    padding: var(--space-2xl) var(--space-xl);
+    background-color: var(--color-secondary);
+    color: var(--color-text-inverse);
+    border-radius: var(--radius-lg);
+  }
+
+  /* The bleeding form of the same tone: the fill is on the band, so it runs
+     the full width of whatever contains the section. It keeps block padding,
+     because a band with a fill and no vertical breathing room reads as a
+     stripe, and it drops the radius unless `rounded` asks for one. */
+  .wpk-section--surface {
+    padding-block: var(--space-section);
+    background-color: var(--color-surface-band);
+  }
+
+  .wpk-section--inverse {
+    padding-block: var(--space-section);
+    background-color: var(--color-secondary);
+    color: var(--color-text-inverse);
+  }
+
+  /* A bleeding band carries its own rhythm: it already separates itself with
+     its own block padding, so the page gap would show as a stripe of page
+     background between two fills. A bleeding band, AND whatever follows one,
+     cancels the gap — one rule for both cases, so a run of adjacent bands
+     cancels it once each. `:not(:first-child)` because the first band in the
+     flow has no gap above it to cancel. */
+  .wpk-section--surface:not(:first-child),
+  .wpk-section--inverse:not(:first-child),
+  :is(.wpk-section--surface, .wpk-section--inverse) + * {
+    margin-block-start: calc(var(--space-section) * -1);
+  }
+
+  .wpk-section--rounded {
+    border-radius: var(--radius-lg);
+  }
+
+  /* `hug` cancels the page rhythm and restates a tighter one. The doubled
+     class keeps this rule's specificity above the bleed rule's regardless of
+     source order. */
+  .wpk-section.wpk-section--hug:not(:first-child) {
+    margin-block-start: calc(var(--space-section) * -1 + var(--space-lg));
+  }
+</style>

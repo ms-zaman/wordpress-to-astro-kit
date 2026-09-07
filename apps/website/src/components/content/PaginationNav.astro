@@ -1,0 +1,194 @@
+---
+// Listing pagination: Previous, the page numbers with an ellipsis where the
+// run is long, and Next. Page 1 is the archive's own URL. Renders nothing
+// when a listing fits on one page.
+import { pageHref, type PageOf } from "../../content-index/pagination.ts";
+
+interface Props {
+  page: PageOf<unknown>;
+  /** The archive's own URL. */
+  base: string;
+  ariaLabel?: string;
+}
+
+const { page, base, ariaLabel = "Pagination" } = Astro.props;
+
+const previousHref = page.hasPrevious
+  ? pageHref(base, page.previousPage!, page.pageCount)
+  : undefined;
+const nextHref = page.hasNext
+  ? pageHref(base, page.nextPage!, page.pageCount)
+  : undefined;
+
+/**
+ * The numbers to show: the first, the last, and a window of two either side
+ * of the current page, with a gap marker where a run is skipped.
+ */
+type Slot = { kind: "page"; number: number } | { kind: "gap" };
+const slots: Slot[] = [];
+if (page.pageCount <= 7) {
+  for (let number = 1; number <= page.pageCount; number += 1)
+    slots.push({ kind: "page", number });
+} else {
+  const keep = new Set<number>([1, page.pageCount]);
+  for (let offset = -2; offset <= 2; offset += 1) {
+    const number = page.page + offset;
+    if (number >= 1 && number <= page.pageCount) keep.add(number);
+  }
+  let previous = 0;
+  for (const number of [...keep].sort((a, b) => a - b)) {
+    if (number - previous > 1) slots.push({ kind: "gap" });
+    slots.push({ kind: "page", number });
+    previous = number;
+  }
+}
+---
+
+{
+  page.pageCount > 1 && (
+    <nav class="wpk-pagination" aria-label={ariaLabel}>
+      {previousHref ? (
+        <a class="wpk-pagination__step" href={previousHref} rel="prev">
+          <span aria-hidden="true">‹</span> Previous
+        </a>
+      ) : (
+        <span
+          class="wpk-pagination__step wpk-pagination__step--off"
+          aria-hidden="true"
+        >
+          <span aria-hidden="true">‹</span> Previous
+        </span>
+      )}
+      <ol role="list" class="wpk-pagination__pages">
+        {slots.map((slot) =>
+          slot.kind === "gap" ? (
+            <li class="wpk-pagination__gap" aria-hidden="true">
+              …
+            </li>
+          ) : (
+            <li class="wpk-pagination__slot">
+              {slot.number === page.page ? (
+                <span
+                  class="wpk-pagination__number wpk-pagination__number--current"
+                  aria-current="page"
+                >
+                  {slot.number}
+                </span>
+              ) : (
+                <a
+                  class="wpk-pagination__number"
+                  href={pageHref(base, slot.number, page.pageCount)}
+                  aria-label={`Page ${slot.number}`}
+                >
+                  {slot.number}
+                </a>
+              )}
+            </li>
+          ),
+        )}
+        <li class="wpk-pagination__position">
+          Page {page.page} of {page.pageCount}
+        </li>
+      </ol>
+      {nextHref ? (
+        <a class="wpk-pagination__step" href={nextHref} rel="next">
+          Next <span aria-hidden="true">›</span>
+        </a>
+      ) : (
+        <span
+          class="wpk-pagination__step wpk-pagination__step--off"
+          aria-hidden="true"
+        >
+          Next <span aria-hidden="true">›</span>
+        </span>
+      )}
+    </nav>
+  )
+}
+
+<style>
+  .wpk-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding-block-start: var(--space-lg);
+    border-block-start: var(--border-width) solid var(--color-border);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+  }
+
+  .wpk-pagination__step {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    color: var(--color-text);
+    text-decoration: none;
+  }
+
+  a.wpk-pagination__step:hover,
+  a.wpk-pagination__step:focus-visible {
+    color: var(--color-link);
+  }
+
+  .wpk-pagination__step--off {
+    color: var(--color-text-muted);
+    opacity: 0.6;
+  }
+
+  .wpk-pagination__pages {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .wpk-pagination__number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 2.5rem;
+    block-size: 2.5rem;
+    padding-inline: var(--space-xs);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    text-decoration: none;
+  }
+
+  a.wpk-pagination__number:hover,
+  a.wpk-pagination__number:focus-visible {
+    background-color: var(--color-surface-band);
+    color: var(--color-text);
+  }
+
+  .wpk-pagination__number--current {
+    background-color: var(--color-primary);
+    color: var(--color-text-inverse);
+  }
+
+  .wpk-pagination__gap {
+    color: var(--color-text-muted);
+    padding-inline: var(--space-2xs);
+  }
+
+  /* On a phone the run of numbers gives way to the position line, in the
+     same list, so neither is duplicated to a screen reader. */
+  .wpk-pagination__position {
+    display: none;
+    color: var(--color-text-muted);
+  }
+
+  @media (max-width: 599px) {
+    .wpk-pagination__slot,
+    .wpk-pagination__gap {
+      display: none;
+    }
+
+    .wpk-pagination__position {
+      display: inline;
+    }
+  }
+</style>

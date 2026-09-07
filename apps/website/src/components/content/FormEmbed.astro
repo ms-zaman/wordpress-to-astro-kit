@@ -1,0 +1,339 @@
+---
+// FormEmbed — a form from `forms/definitions.ts`, routed by `forms/routing.ts`.
+//
+// Two renderings, decided by the route's transport. A WIRED form posts
+// natively to its endpoint and carries the island that upgrades that to an
+// in-page submit with explicit outcomes; an UNWIRED form renders the same
+// fields, no `action`, and the notice that says a submission is not sent —
+// read WITH the form (`aria-describedby`), so a reader who never sees the
+// layout learns it before filling anything in. Neither branch can claim a
+// success it did not get.
+//
+// A form with NO route stops the build: a form nobody routes is the
+// route-to-nowhere shape, and nothing on the page would say so.
+import { Button, Heading, Section, sectionHeadingId } from "@wpk/ui";
+import type { SectionHeadingLevel } from "@wpk/ui";
+
+import RichTextBlock from "./RichTextBlock.astro";
+import { formByKey } from "../../forms/definitions.ts";
+import transportIsland from "../../forms/form-transport.js?raw";
+import { routeFor } from "../../forms/routing.ts";
+
+interface Props {
+  formKey: string;
+  heading?: string;
+  body?: string;
+  anchorId?: string;
+  headingAs?: SectionHeadingLevel;
+}
+
+const { formKey, heading, body, anchorId, headingAs = "h2" } = Astro.props;
+
+const form = formByKey(formKey);
+const route = routeFor(formKey);
+if (route === undefined)
+  throw new Error(
+    `FormEmbed: the form "${formKey}" has no route in forms/routing.ts. ` +
+      "Where its submissions go is undeclared, and a form nobody routes " +
+      "delivers nowhere.",
+  );
+const wired = route.transport.kind === "http-post";
+const endpoint = wired ? route.transport.endpoint : undefined;
+
+const titleId =
+  anchorId !== undefined && heading ? sectionHeadingId(anchorId) : undefined;
+const noticeId = `wpk-form-${form.key}-notice`;
+const fieldId = (name: string): string => `wpk-form-${form.key}-${name}`;
+---
+
+<Section id={anchorId} aria-labelledby={titleId} gap="lg" class="wpk-form-band">
+  {
+    heading && (
+      <Heading as={headingAs} size="lg" id={titleId}>
+        {heading}
+      </Heading>
+    )
+  }
+  {body && <RichTextBlock body={body} />}
+
+  <div class="wpk-form-band__panel">
+    <form
+      class="wpk-form"
+      aria-label={form.name}
+      aria-describedby={wired ? undefined : noticeId}
+      method={wired ? "post" : undefined}
+      action={endpoint}
+      enctype={wired ? "multipart/form-data" : undefined}
+      data-wpk-form={wired ? form.key : undefined}
+      data-wpk-form-success={wired ? form.successMessage : undefined}
+    >
+      <div class="wpk-form__grid">
+        {
+          form.fields.map((field) =>
+            field.kind === "radio" ? (
+              <fieldset
+                class:list={[
+                  "wpk-form__field",
+                  `wpk-form__field--${field.span ?? "full"}`,
+                ]}
+              >
+                <legend class="wpk-form__label">
+                  {field.label}
+                  {field.required && (
+                    <span class="wpk-form__required" aria-hidden="true">
+                      *
+                    </span>
+                  )}
+                  {field.required && (
+                    <span class="wpk-form__sr"> (required)</span>
+                  )}
+                </legend>
+                <div class="wpk-form__choices">
+                  {(field.options ?? []).map((option, index) => (
+                    <label class="wpk-form__choice">
+                      <input
+                        type="radio"
+                        name={field.name}
+                        value={option}
+                        required={field.required && index === 0}
+                      />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <div
+                class:list={[
+                  "wpk-form__field",
+                  `wpk-form__field--${field.span ?? "full"}`,
+                ]}
+              >
+                <label class="wpk-form__label" for={fieldId(field.name)}>
+                  {field.label}
+                  {field.required && (
+                    <span class="wpk-form__required" aria-hidden="true">
+                      *
+                    </span>
+                  )}
+                  {field.required && (
+                    <span class="wpk-form__sr"> (required)</span>
+                  )}
+                </label>
+                {field.kind === "select" ? (
+                  <select
+                    class="wpk-form__control"
+                    id={fieldId(field.name)}
+                    name={field.name}
+                    required={field.required}
+                  >
+                    <option value="" disabled selected>
+                      {field.placeholder ?? "Select"}
+                    </option>
+                    {(field.options ?? []).map((option) => (
+                      <option value={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : field.kind === "textarea" ? (
+                  <textarea
+                    class="wpk-form__control wpk-form__control--area"
+                    id={fieldId(field.name)}
+                    name={field.name}
+                    rows={5}
+                    required={field.required}
+                    placeholder={field.placeholder}
+                  />
+                ) : (
+                  <input
+                    class="wpk-form__control"
+                    id={fieldId(field.name)}
+                    name={field.name}
+                    type={field.kind}
+                    required={field.required}
+                    placeholder={field.placeholder}
+                    accept={field.accept}
+                  />
+                )}
+              </div>
+            ),
+          )
+        }
+        {
+          /* A honeypot: a field no person fills, ignored by the island when
+             it is not empty. */
+        }
+        <input
+          class="wpk-form__trap"
+          type="text"
+          name="website"
+          tabindex="-1"
+          autocomplete="off"
+          aria-hidden="true"
+        />
+        <input type="hidden" name="form" value={form.key} />
+        <p
+          class="wpk-form__status wpk-form__field--full"
+          data-wpk-form-status
+          role="status"
+          aria-live="polite"
+        >
+        </p>
+        {
+          !wired && (
+            <p class="wpk-form__notice wpk-form__field--full" id={noticeId}>
+              {form.unwiredNotice}
+              {form.unwiredAction && (
+                <>
+                  {" "}
+                  <a href={form.unwiredAction.href}>
+                    {form.unwiredAction.label}
+                  </a>
+                </>
+              )}
+            </p>
+          )
+        }
+      </div>
+      <div class="wpk-form__actions">
+        {
+          wired ? (
+            <Button type="submit" variant="primary">
+              {form.submitLabel}
+            </Button>
+          ) : (
+            <Button type="submit" variant="primary" disabled>
+              {form.submitLabel}
+            </Button>
+          )
+        }
+      </div>
+    </form>
+    {
+      wired && (
+        <script
+          is:inline
+          data-wpk-island="form-transport"
+          set:html={transportIsland}
+        />
+      )
+    }
+  </div>
+</Section>
+
+<style>
+  .wpk-form-band__panel {
+    padding: var(--space-xl);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-background);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .wpk-form__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-md) var(--space-lg);
+  }
+
+  .wpk-form__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-inline-size: 0;
+  }
+
+  .wpk-form__field--full {
+    grid-column: 1 / -1;
+  }
+
+  @media (max-width: 599px) {
+    .wpk-form__field--half {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .wpk-form__label {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+  }
+
+  .wpk-form__required {
+    margin-inline-start: 0.2em;
+    color: var(--color-error);
+  }
+
+  .wpk-form__sr,
+  .wpk-form__trap {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .wpk-form__control {
+    inline-size: 100%;
+    padding: 0.625rem var(--space-md);
+    border: var(--border-width) solid var(--color-border-interactive);
+    border-radius: var(--radius-md);
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-md);
+  }
+
+  .wpk-form__control--area {
+    resize: vertical;
+    min-block-size: 8rem;
+  }
+
+  .wpk-form__choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-lg);
+  }
+
+  .wpk-form__choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-body-md);
+  }
+
+  .wpk-form__status {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+  }
+
+  .wpk-form__status:empty {
+    display: none;
+  }
+
+  .wpk-form__status[data-wpk-form-outcome="success"] {
+    color: var(--color-success);
+  }
+
+  .wpk-form__status[data-wpk-form-outcome="failure"] {
+    color: var(--color-error);
+  }
+
+  .wpk-form__notice {
+    margin: 0;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-start: var(--space-lg);
+  }
+</style>

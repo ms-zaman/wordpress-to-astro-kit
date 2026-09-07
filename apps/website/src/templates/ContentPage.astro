@@ -1,0 +1,75 @@
+---
+// A WordPress page, rendered: breadcrumb trail through its parents, the
+// title, the body, and the form it names if it names one.
+import { render } from "astro:content";
+import { Heading, Section } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import FormEmbed from "../components/content/FormEmbed.astro";
+import Prose from "../components/content/Prose.astro";
+import { trailCrumbs } from "../content-index/wayfinding.ts";
+import { prepareBody } from "../rendering/body.ts";
+import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
+import { truncateAtWord } from "../rendering/portable-body.ts";
+import { firstProseParagraph, textOf } from "../rendering/post-view.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import type { PageRoute } from "../routing/resolver.ts";
+import type { PageEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: PageRoute<PageEntry>;
+  site: SiteData;
+  /** Structured data the page that renders this template contributes. */
+  jsonLd?: Record<string, unknown>;
+}
+
+const { route, site, jsonLd } = Astro.props;
+const { entry, parents } = route;
+const { data } = entry;
+
+const crumbs = trailCrumbs(
+  parents.map((parent) => ({
+    label: parent.data.title,
+    href: site.hrefOf("page", parent.data.slug) ?? "/",
+  })),
+  data.title,
+);
+
+// HTML bodies are WordPress's own markup, prepared and set as HTML. A body
+// that opts into Markdown goes through Astro's pipeline instead.
+const markdown = data.bodyFormat === "markdown";
+const rendered = markdown ? await render(entry) : undefined;
+const html = markdown ? "" : prepareBody(entry.body ?? "");
+
+const seo = seoMetadata(
+  {
+    title: route.path === "/" ? SITE_NAME : `${data.title} – ${SITE_NAME}`,
+    description: truncateAtWord(
+      data.excerpt ? textOf(data.excerpt) : firstProseParagraph(entry.body),
+      META_DESCRIPTION_MAX,
+    ),
+  },
+  findOverride(site.overrides, route.path, data.locale),
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={data.locale}
+  crumbs={route.path === "/" ? undefined : crumbs}
+  jsonLd={jsonLd}
+>
+  <Section gap="sm">
+    {route.path !== "/" && <Breadcrumbs crumbs={crumbs} />}
+    <Heading as="h1" size="xl">{data.title}</Heading>
+    <Prose>
+      {rendered ? <rendered.Content /> : <Fragment set:html={html} />}
+    </Prose>
+  </Section>
+  {data.form && <FormEmbed formKey={data.form} headingAs="h2" />}
+</BaseLayout>

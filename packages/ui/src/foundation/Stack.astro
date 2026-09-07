@@ -1,0 +1,96 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Stack — spacing abstraction: lays out children on one axis with a
+ * token-based gap, replacing per-child margins.
+ */
+interface Props extends HTMLAttributes<"div"> {
+  /** Layout axis. Defaults to vertical. */
+  direction?: "vertical" | "horizontal";
+  /** Gap between children, from the spacing scale. Defaults to md. */
+  gap?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
+  /** Cross-axis alignment. Defaults to stretch. */
+  align?: "start" | "center" | "end" | "stretch";
+}
+
+const {
+  direction = "vertical",
+  gap = "md",
+  align = "stretch",
+  class: className,
+  ...rest
+} = Astro.props;
+---
+
+<div
+  class:list={[
+    "wpk-stack",
+    `wpk-stack--${direction}`,
+    `wpk-stack--gap-${gap}`,
+    `wpk-stack--align-${align}`,
+    className,
+  ]}
+  {...rest}
+>
+  <slot />
+</div>
+
+<style>
+  .wpk-stack {
+    display: flex;
+  }
+
+  .wpk-stack--vertical {
+    flex-direction: column;
+  }
+
+  .wpk-stack--horizontal {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .wpk-stack--gap-2xs {
+    gap: var(--space-2xs);
+  }
+
+  .wpk-stack--gap-xs {
+    gap: var(--space-xs);
+  }
+
+  .wpk-stack--gap-sm {
+    gap: var(--space-sm);
+  }
+
+  .wpk-stack--gap-md {
+    gap: var(--space-md);
+  }
+
+  .wpk-stack--gap-lg {
+    gap: var(--space-lg);
+  }
+
+  .wpk-stack--gap-xl {
+    gap: var(--space-xl);
+  }
+
+  .wpk-stack--gap-2xl {
+    gap: var(--space-2xl);
+  }
+
+  .wpk-stack--align-start {
+    align-items: flex-start;
+  }
+
+  .wpk-stack--align-center {
+    align-items: center;
+  }
+
+  .wpk-stack--align-end {
+    align-items: flex-end;
+  }
+
+  .wpk-stack--align-stretch {
+    align-items: stretch;
+  }
+</style>

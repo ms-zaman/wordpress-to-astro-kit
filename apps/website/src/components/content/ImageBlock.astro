@@ -1,0 +1,77 @@
+---
+// ImageBlock — renders a media reference as a plain `<img>`.
+//
+// Three things it deliberately does not do: it does not rewrite the PATH (the
+// uploads namespace is preserved byte-for-byte, and only the ORIGIN goes
+// through `rendering/media.ts`); it does not use `astro:assets`, which
+// re-emits the file at a new path — image optimisation is a decision with an
+// owner; and it does not invent alt text. A missing alt renders `alt=""`,
+// marking the image decorative, which is the only safe default.
+import { mediaSrcset, mediaUrl } from "../../rendering/media.ts";
+
+interface MediaRef {
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+  variants?: readonly { url: string; width: number; height: number }[];
+}
+
+interface Props {
+  media?: MediaRef | null;
+  /** Aspect-ratio behaviour. `natural` lets intrinsic dimensions decide. */
+  fit?: "natural" | "wide";
+  loading?: "lazy" | "eager";
+  /**
+   * The `sizes` hint — how wide this image renders, as CSS. REQUIRED for a
+   * `srcset` to help: with no `sizes` a browser assumes `100vw` and picks the
+   * largest candidate. Every caller measures its own box.
+   */
+  sizes?: string;
+}
+
+const {
+  media,
+  fit = "natural",
+  loading = "lazy",
+  sizes = "100vw",
+} = Astro.props;
+
+const srcset = media ? mediaSrcset(media) : undefined;
+---
+
+{
+  media && (
+    <figure class:list={["wpk-image", `wpk-image--${fit}`]}>
+      <img
+        src={mediaUrl(media.url)}
+        srcset={srcset}
+        sizes={srcset === undefined ? undefined : sizes}
+        alt={media.alt ?? ""}
+        width={media.width}
+        height={media.height}
+        loading={loading}
+        decoding="async"
+      />
+    </figure>
+  )
+}
+
+<style>
+  .wpk-image {
+    margin: 0;
+  }
+
+  .wpk-image img {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+  }
+
+  .wpk-image--wide img {
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+  }
+</style>

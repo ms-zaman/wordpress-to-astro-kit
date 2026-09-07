@@ -1,0 +1,25 @@
+{
+  "name": "@wpk/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Astro site. Static-first; every launch-time difference between the preview and the production build is decided by src/deployment/site-environment.ts.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "content:validate": "node content-contract/validate-content.ts",
+    "content:contract": "node content-contract/run.ts",
+    "render:contract": "node render-contract/run.ts",
+    "render:build-audit": "node render-contract/build-audit.ts"
+  },
+  "dependencies": {
+    "@wpk/ui": "workspace:*",
+    "astro": "^7.3.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "slug": "jane-doe",
+  "name": "Jane Doe",
+  "nicename": "jane",
+  "bio": "Writes things.",
+  "social": [{ "label": "Website", "url": "https://example.com/jane" }],
+  "source": {
+    "system": "wordpress",
+    "sourceId": "7",
+    "capturedAt": "2026-01-16"
+  }
+}

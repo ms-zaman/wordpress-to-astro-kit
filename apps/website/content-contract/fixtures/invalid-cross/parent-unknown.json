@@ -1,0 +1,4 @@
+{
+  "kind": "parents",
+  "pages": [{ "slug": "team", "locale": "en", "parent": "about" }]
+}

@@ -1,0 +1,32 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Container — the content-width cap, and nothing else. Purely structural: no
+ * visual styling, no padding.
+ *
+ * `--container-max-width` is applied literally — 1200px means 1200px of
+ * content — because the container holds no padding. The gutter belongs to
+ * whatever wraps it (`Section`, the site header and footer), which is also
+ * what lets a wrapper paint edge to edge while the content inside it stays
+ * capped.
+ */
+interface Props extends HTMLAttributes<"div"> {
+  /** Rendered element. Defaults to a plain div. */
+  as?: "div" | "section" | "main" | "article" | "header" | "footer";
+}
+
+const { as: Tag = "div", class: className, ...rest } = Astro.props;
+---
+
+<Tag class:list={["wpk-container", className]} {...rest}>
+  <slot />
+</Tag>
+
+<style>
+  .wpk-container {
+    inline-size: 100%;
+    max-inline-size: var(--container-max-width);
+    margin-inline: auto;
+  }
+</style>

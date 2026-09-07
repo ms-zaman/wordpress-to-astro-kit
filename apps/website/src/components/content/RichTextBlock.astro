@@ -1,0 +1,47 @@
+---
+// RichTextBlock — renders a plain-text body as paragraphs. It interprets NO
+// markup: Astro escapes interpolated text, so a body containing `<b>` shows
+// those characters rather than bolding anything.
+import { Stack, Text } from "@wpk/ui";
+
+import { paragraphsOf } from "../../rendering/portable-body.ts";
+
+interface Props {
+  body?: string | null;
+  size?: "lg" | "md" | "sm";
+  measure?: boolean;
+  align?: "start" | "center";
+}
+
+const { body, size = "md", measure = true, align = "start" } = Astro.props;
+const paragraphs = paragraphsOf(body);
+---
+
+{
+  paragraphs.length > 0 && (
+    <div
+      class:list={[
+        "wpk-rich-text",
+        measure && "wpk-rich-text--measure",
+        align === "center" && "wpk-rich-text--center",
+      ]}
+    >
+      <Stack gap="sm">
+        {paragraphs.map((paragraph) => (
+          <Text size={size}>{paragraph}</Text>
+        ))}
+      </Stack>
+    </div>
+  )
+}
+
+<style>
+  .wpk-rich-text--measure {
+    max-inline-size: var(--measure);
+  }
+
+  .wpk-rich-text--center {
+    margin-inline: auto;
+    text-align: center;
+  }
+</style>

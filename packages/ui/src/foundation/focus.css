@@ -1,0 +1,24 @@
+/*
+ * The design system's focus indicator.
+ *
+ * One universal rule, shipped from the design system's own package beside the
+ * tokens, so a control added tomorrow draws the system's ring without its
+ * author knowing this file exists. A per-component ring is a rule that must
+ * be remembered, and the controls nobody remembers are exactly the ones a
+ * keyboard user cannot find.
+ *
+ * It sets outline properties only. `border-radius` shapes the outline's
+ * corners but also reshapes the element, so a component that wants a rounded
+ * ring still says so itself.
+ *
+ * `:focus-visible` and not `:focus`: a pointer user does not get a ring they
+ * did not ask for; a keyboard user does.
+ *
+ * This is the package's global stylesheet for exactly one concern. A second
+ * rule wanting to live here is a second decision — see box-sizing.css for the
+ * one other rule that earned a file.
+ */
+:focus-visible {
+  outline: var(--focus-width) var(--focus-style) var(--focus-color);
+  outline-offset: var(--focus-offset);
+}

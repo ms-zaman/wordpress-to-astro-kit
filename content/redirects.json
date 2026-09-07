@@ -1,0 +1,5 @@
+{
+  "$comment": "URL continuity. A RULE is one live path to one destination and the build materialises it as a meta-refresh page plus a row in dist/_redirects and dist/redirects.json. A SPLAT is a prefix only a host can honour (a language prefix, say). Sources are slashless route keys; targets take the site's one URL shape. The build fails on a target that is not a published page.",
+  "rules": [],
+  "splats": []
+}

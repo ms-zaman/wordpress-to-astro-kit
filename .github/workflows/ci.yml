@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    # `dev` is the integration branch: the merge result of two feature branches
+    # is the thing a per-PR run never validates. `test` is the testing stage
+    # the flow promotes into; `main` is the release branch.
+    branches: [main, test, dev]
+  pull_request:
+
+jobs:
+  # Everything that needs no browser and no network. Runs on every push and
+  # every PR, because a gate that exists and runs nowhere is not a gate — it
+  # is a thing somebody remembers to type.
+  validate:
+    name: Install, lint, check, contracts, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Astro diagnostics
+        run: pnpm check
+
+      # The content gates: every registry row and entry against its schema,
+      # the cross-entry rules, and the contract suite that proves the schemas
+      # still REJECT what they are supposed to reject.
+      - name: Content contract
+        run: pnpm content:contract
+
+      - name: Content validation
+        run: pnpm content:validate
+
+      # The rendering contract reads sources, so it runs before the build; the
+      # build audit reads `dist/`, so `pnpm render:build-audit` builds first.
+      - name: Rendering contract
+        run: pnpm render
+
+      - name: Build and build audit
+        run: pnpm render:build-audit
+
+      # The production contract, audited on a production build. With sample
+      # content in the tree this step FAILS — deliberately. Remove the sample
+      # content when your migration lands and it goes green.
+      - name: Production build audit
+        if: false
+        run: |
+          WPK_SITE_ENV=production pnpm build
+          pnpm --filter @wpk/website render:build-audit
+
+      - name: Suites
+        run: pnpm test:all

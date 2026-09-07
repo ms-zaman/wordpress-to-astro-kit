@@ -1,0 +1,36 @@
+---
+// PageContainer — the main column of a page: one landmark and the vertical
+// rhythm between the sections a route puts in it.
+//
+// Not a boxed container: `main` runs the full width and each band caps its
+// own content (`Section`). The rhythm is owned HERE and not by `Section`: a
+// section that carried its own outer spacing would stack its bottom space
+// against the next section's top space, and margin collapsing would decide
+// the result. One owner, one gap, no collapse.
+---
+
+<main id="main" tabindex="-1" class="wpk-page">
+  <div class="wpk-page__flow">
+    <slot />
+  </div>
+</main>
+
+<style>
+  .wpk-page {
+    padding-block: var(--space-xl);
+  }
+
+  .wpk-page__flow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-section);
+  }
+
+  /* 1025px is `breakpoints.tablet + 1` from @wpk/tokens, restated as a
+     literal because custom properties are invalid inside a media query. */
+  @media (min-width: 1025px) {
+    .wpk-page {
+      padding-block: var(--space-3xl);
+    }
+  }
+</style>

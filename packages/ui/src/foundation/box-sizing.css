@@ -1,0 +1,17 @@
+/*
+ * The design system's box model.
+ *
+ * One universal rule rather than a declaration in every component: a rule that
+ * must be remembered is a rule that will be forgotten, and the failure it
+ * produces — a padded box whose stated width renders narrower than the number
+ * says — is found one component at a time.
+ *
+ * `border-box` directly rather than the `inherit` idiom: nothing here opts out,
+ * no third-party subtree renders inside the page, and the direct form answers
+ * "what box model is this element in?" in one line.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

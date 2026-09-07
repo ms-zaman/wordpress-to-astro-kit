@@ -1,0 +1,12 @@
+[
+  {
+    "slug": "uncategorized",
+    "name": { "en": "Uncategorized" },
+    "source": { "system": "sample" }
+  },
+  {
+    "slug": "news",
+    "name": { "en": "News" },
+    "source": { "system": "sample" }
+  }
+]

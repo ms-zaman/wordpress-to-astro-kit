@@ -1,0 +1,11 @@
+{
+  "slug": "xx",
+  "title": "Unknown locale",
+  "locale": "xx",
+  "cluster": "posts/xx",
+  "updatedAt": "2026-01-01",
+  "publishedAt": "2026-01-01",
+  "author": "jane-doe",
+  "categories": ["news"],
+  "source": { "system": "authored" }
+}

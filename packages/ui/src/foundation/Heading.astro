@@ -1,0 +1,64 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Heading — semantic heading rendering with token-based typography. The
+ * rendered level (`as`) and the visual size are independent so the document
+ * outline stays correct regardless of visual hierarchy.
+ */
+interface Props extends HTMLAttributes<"h2"> {
+  /** Semantic heading level. Defaults to h2. */
+  as?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+  /**
+   * Visual size, independent of the semantic level. Each value is a JOB:
+   * `xl` a page's display heading, `lg` a section band's heading, `md` a large
+   * card title, `sm` a card title, `card` a listing tile's title.
+   */
+  size?: "xl" | "lg" | "md" | "sm" | "card";
+}
+
+const { as: Tag = "h2", size = "lg", class: className, ...rest } = Astro.props;
+---
+
+<Tag class:list={["wpk-heading", `wpk-heading--${size}`, className]} {...rest}>
+  <slot />
+</Tag>
+
+<style>
+  /* `:where()` so these are DEFAULTS, not decisions: a consumer's own class
+     at equal specificity always wins, and a heading with no class of its own
+     still gets all of this. */
+  :where(.wpk-heading) {
+    margin-block: 0;
+    font-family: var(--font-family-heading);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text);
+  }
+
+  :where(.wpk-heading--xl) {
+    font-size: var(--font-size-heading-xl);
+    letter-spacing: var(--letter-spacing-display);
+    line-height: var(--line-height-tight);
+  }
+
+  :where(.wpk-heading--lg) {
+    font-size: var(--font-size-heading-lg);
+    letter-spacing: var(--letter-spacing-display);
+    line-height: var(--line-height-tight);
+  }
+
+  :where(.wpk-heading--md) {
+    font-size: var(--font-size-heading-md);
+    line-height: var(--line-height-tight);
+  }
+
+  :where(.wpk-heading--sm) {
+    font-size: var(--font-size-heading-sm);
+    line-height: var(--line-height-tight);
+  }
+
+  :where(.wpk-heading--card) {
+    font-size: var(--font-size-heading-card);
+    line-height: var(--line-height-snug);
+  }
+</style>

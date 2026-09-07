@@ -1,0 +1,183 @@
+---
+// SiteFooter. Its columns come from `content/navigation/footer.json` and its
+// bottom row from `footer-legal.json` — two menus, because they are two menus
+// on a WordPress site too. The profile links come from
+// `content/config/site.json`: they are the company's identities, the same on
+// every page and every locale, and not per-locale content.
+//
+// The scope notice is the one sentence a PREVIEW must say on every page, and
+// it is rendered only when the launch switch says this is a preview — the
+// build audit asserts it is present on a preview page and absent on a
+// production one.
+import { Container, Text } from "@wpk/ui";
+
+import Navigation from "./Navigation.astro";
+import type { NavigationNode } from "../../rendering/navigation-model.ts";
+import { SITE_NAME, site } from "../../rendering/site-identity.ts";
+
+interface Props {
+  items: readonly NavigationNode[];
+  legal?: readonly NavigationNode[];
+  /** Whether this build is the preview. Decided by the launch switch. */
+  preview?: boolean;
+}
+
+const { items, legal = [], preview = false } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="wpk-site-footer">
+  <Container>
+    <div class="wpk-site-footer__panel">
+      <div class="wpk-site-footer__top">
+        <div class="wpk-site-footer__brand">
+          <p class="wpk-site-footer__name">{SITE_NAME}</p>
+          {
+            site.tagline && (
+              <Text class="wpk-site-footer__line" tone="muted">
+                {site.tagline}
+              </Text>
+            )
+          }
+          {
+            site.social.length > 0 && (
+              <ul role="list" class="wpk-site-footer__social">
+                {site.social.map((link) => (
+                  <li>
+                    <a
+                      class="wpk-site-footer__social-link"
+                      href={link.href}
+                      rel="me noopener"
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        </div>
+        <Navigation items={items} label="Footer" variant="columns" />
+      </div>
+
+      <div class="wpk-site-footer__bottom">
+        <p class="wpk-site-footer__credit">
+          © {year}
+          {SITE_NAME}
+        </p>
+        {
+          legal.length > 0 && (
+            <ul role="list" class="wpk-site-footer__legal">
+              {legal.map((item) => (
+                <li>
+                  <a class="wpk-site-footer__legal-link" href={item.href}>
+                    {item.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </div>
+
+      {
+        preview && (
+          <div class="wpk-site-footer__scope" data-wpk-scope-notice>
+            <Text size="sm" tone="muted">
+              Preview build — not the production site. Pages are not indexed.
+            </Text>
+          </div>
+        )
+      }
+    </div>
+  </Container>
+</footer>
+
+<style>
+  .wpk-site-footer {
+    margin-block-start: auto;
+    padding-block: var(--space-2xl);
+    padding-inline: var(--gutter);
+    background-color: var(--color-surface-band);
+  }
+
+  .wpk-site-footer__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+  }
+
+  .wpk-site-footer__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-xl);
+  }
+
+  @media (min-width: 768px) {
+    .wpk-site-footer__top {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
+    }
+  }
+
+  .wpk-site-footer__brand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .wpk-site-footer__name {
+    margin: 0;
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-body-lg);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .wpk-site-footer__social {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .wpk-site-footer__social-link,
+  .wpk-site-footer__legal-link {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-body-sm);
+  }
+
+  .wpk-site-footer__social-link:hover,
+  .wpk-site-footer__legal-link:hover {
+    color: var(--color-link);
+  }
+
+  .wpk-site-footer__bottom {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm) var(--space-lg);
+    padding-block-start: var(--space-lg);
+    border-block-start: var(--border-width) solid var(--color-border);
+  }
+
+  .wpk-site-footer__credit {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+
+  .wpk-site-footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .wpk-site-footer__scope {
+    padding-block-start: var(--space-sm);
+  }
+</style>

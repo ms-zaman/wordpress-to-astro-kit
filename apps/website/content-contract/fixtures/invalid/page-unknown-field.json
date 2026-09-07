@@ -1,0 +1,9 @@
+{
+  "slug": "about",
+  "title": "About",
+  "locale": "en",
+  "cluster": "pages/about",
+  "updatedAt": "2026-01-01",
+  "template": "full-width",
+  "source": { "system": "authored" }
+}

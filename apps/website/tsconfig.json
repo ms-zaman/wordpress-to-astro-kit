@@ -1,0 +1,9 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro/types.d.ts", "**/*"],
+  // `content-contract/` and `render-contract/` are Node tooling (node: built-ins,
+  // run on the Node 24 baseline), not app source. `astro check` owns application
+  // diagnostics; excluding them keeps @types/node out of the dependency baseline.
+  // The tooling is verified by execution: `pnpm content` and `pnpm render`.
+  "exclude": ["dist", "content-contract", "render-contract", "astro.config.mjs"]
+}

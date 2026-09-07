@@ -1,0 +1,151 @@
+---
+// The search form. A plain `GET` form: it works without any script — the
+// page reloads with `?q=` in the URL and the island on `/search` runs the
+// query on load — and with the island it submits in place. `role="search"`
+// makes it a landmark; a real `<label>` is bound with `for`/`id`.
+import { Button } from "@wpk/ui";
+
+import { SEARCH_ROUTE } from "../../deployment/route-inventory.ts";
+import { sitePath } from "../../routing/url-shape.ts";
+import { SEARCH_QUERY_PARAM } from "../../search/search-document.ts";
+
+interface Props {
+  action?: string;
+  value?: string;
+  label?: string;
+  placeholder?: string;
+  /** A hidden `kind` restriction. */
+  kind?: string;
+  hint?: string;
+  variant?: "plain" | "band";
+  /** Unique id suffix when two forms share a page. */
+  id?: string;
+}
+
+const {
+  action = sitePath(SEARCH_ROUTE),
+  value = "",
+  label = "Search the site",
+  placeholder = "Search…",
+  kind,
+  hint,
+  variant = "plain",
+  id = "wpk-search",
+} = Astro.props;
+const inputId = `${id}-input`;
+const hintId = `${id}-hint`;
+---
+
+<form
+  class:list={["wpk-search-form", `wpk-search-form--${variant}`]}
+  role="search"
+  method="get"
+  action={action}
+>
+  <label class="wpk-search-form__label" for={inputId}>{label}</label>
+  <div class="wpk-search-form__row">
+    <input
+      class="wpk-search-form__input"
+      id={inputId}
+      type="search"
+      name={SEARCH_QUERY_PARAM}
+      value={value}
+      placeholder={placeholder}
+      autocomplete="off"
+      spellcheck="false"
+      aria-describedby={hint ? hintId : undefined}
+    />
+    {kind && <input type="hidden" name="kind" value={kind} />}
+    <Button type="submit" variant="primary">Search</Button>
+  </div>
+  {
+    hint && (
+      <p class="wpk-search-form__hint" id={hintId}>
+        {hint}
+      </p>
+    )
+  }
+</form>
+
+<style>
+  .wpk-search-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+  }
+
+  .wpk-search-form__label {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+  }
+
+  .wpk-search-form__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .wpk-search-form__input {
+    flex: 1 1 16rem;
+    min-inline-size: 0;
+    block-size: 2.75rem;
+    padding: 0 var(--space-md);
+    border: var(--border-width) solid var(--color-border-interactive);
+    border-radius: var(--radius-full);
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-md);
+  }
+
+  .wpk-search-form__input::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .wpk-search-form__input:focus-visible {
+    outline-offset: 1px;
+  }
+
+  .wpk-search-form__hint {
+    margin-block: 0;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-muted);
+  }
+
+  /* The band variant: a centred pill for a page opening. The label is for
+     assistive technology; the placeholder is the visual cue. */
+  .wpk-search-form--band {
+    inline-size: min(100%, 45rem);
+    margin-inline: auto;
+  }
+
+  .wpk-search-form--band .wpk-search-form__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .wpk-search-form--band .wpk-search-form__row {
+    flex-wrap: nowrap;
+    gap: 0;
+    padding: 0.375rem 0.375rem 0.375rem 0;
+    background-color: var(--color-background);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-chrome);
+  }
+
+  .wpk-search-form--band .wpk-search-form__input {
+    border: 0;
+  }
+
+  .wpk-search-form--band .wpk-search-form__input:focus-visible {
+    outline-offset: -2px;
+  }
+</style>

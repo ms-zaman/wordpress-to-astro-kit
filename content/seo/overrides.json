@@ -1,0 +1,9 @@
+[
+  {
+    "path": "/blog/",
+    "locale": "en",
+    "metaDescription": "Every post on the sample site, newest first. A sample override row: it shows the table's shape and is deleted with the rest of the sample content.",
+    "disposition": { "state": "preserve", "note": "sample row" },
+    "source": { "system": "sample" }
+  }
+]

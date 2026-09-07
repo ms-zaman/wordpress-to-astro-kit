@@ -1,0 +1,82 @@
+---
+// `/` — what the front page is, decided by `migration.config.ts`: the page
+// named by `permalinks.frontPage`, or page one of the posts listing when
+// `postsIndex` is `/`. Neither configured, and the page falls back to the
+// site's latest posts under the site's name — a build with content but no
+// front page should still build.
+//
+// The site-wide `Organization` and `WebSite` structured data is emitted here
+// and nowhere else: a crawler reads it once from the root.
+import { Heading, Section } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PostList, { type PostCard } from "../components/content/PostList.astro";
+import ArchivePage from "../templates/ArchivePage.astro";
+import ContentPage from "../templates/ContentPage.astro";
+import { SEARCH_ROUTE } from "../deployment/route-inventory.ts";
+import { siteIdentityJsonLd } from "../rendering/head-model.ts";
+import {
+  SITE_NAME,
+  site as siteConfig,
+  siteOrigin,
+} from "../rendering/site-identity.ts";
+import { latestPosts } from "../rendering/post-view.ts";
+import { authorPath } from "../routing/permalink.ts";
+import { loadSiteData } from "../routing/site-routes.ts";
+import { sitePath } from "../routing/url-shape.ts";
+import { SEARCH_QUERY_PARAM } from "../search/search-document.ts";
+
+const site = await loadSiteData();
+const front = site.frontPage;
+
+const identity = siteIdentityJsonLd({
+  name: SITE_NAME,
+  origin: siteOrigin(),
+  logoPath: siteConfig.logo ?? undefined,
+  sameAs: siteConfig.social.map((link) => link.href),
+  searchPath: sitePath(SEARCH_ROUTE),
+  searchParam: SEARCH_QUERY_PARAM,
+});
+
+const fallback: PostCard[] = latestPosts(site.posts, 6).map((post) => {
+  const author = site.authorOf(post.data.author);
+  return {
+    href: site.hrefOf("post", post.data.slug) ?? "#",
+    title: post.data.title,
+    publishedAt: post.data.publishedAt,
+    featuredImage: post.data.featuredImage,
+    author: author
+      ? {
+          name: author.name,
+          href: authorPath(author.nicename ?? author.slug),
+          avatar: author.avatar,
+        }
+      : undefined,
+  };
+});
+---
+
+{
+  front?.kind === "page" ? (
+    <ContentPage route={front} site={site} jsonLd={identity} />
+  ) : front?.kind === "archive" ? (
+    <ArchivePage route={front} site={site} jsonLd={identity} />
+  ) : (
+    <BaseLayout
+      title={SITE_NAME}
+      description={siteConfig.tagline ?? `The latest posts on ${SITE_NAME}.`}
+      jsonLd={identity}
+    >
+      <Section gap="lg">
+        <Heading as="h1" size="xl">
+          {SITE_NAME}
+        </Heading>
+        <PostList
+          posts={fallback}
+          locale={site.locale}
+          emptyMessage="No posts have been published yet."
+        />
+      </Section>
+    </BaseLayout>
+  )
+}

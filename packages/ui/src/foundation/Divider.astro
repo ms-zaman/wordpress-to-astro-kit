@@ -1,0 +1,22 @@
+---
+import type { HTMLAttributes } from "astro/types";
+
+/**
+ * Divider — visual separation primitive. Carries no margins of its own;
+ * spacing belongs to the parent layout (e.g. Stack gap).
+ */
+type Props = HTMLAttributes<"hr">;
+
+const { class: className, ...rest } = Astro.props;
+---
+
+<hr class:list={["wpk-divider", className]} {...rest} />
+
+<style>
+  .wpk-divider {
+    inline-size: 100%;
+    margin-block: 0;
+    border: none;
+    border-block-start: var(--border-width) solid var(--color-border);
+  }
+</style>

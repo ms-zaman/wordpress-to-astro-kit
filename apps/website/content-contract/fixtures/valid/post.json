@@ -1,0 +1,30 @@
+{
+  "slug": "a-post",
+  "title": "A post",
+  "locale": "en",
+  "cluster": "posts/a-post",
+  "updatedAt": "2026-01-15",
+  "publishedAt": "2026-01-15",
+  "author": "jane-doe",
+  "categories": ["news"],
+  "tags": ["Sample Tag", "another"],
+  "excerpt": "An authored excerpt.",
+  "featuredImage": {
+    "url": "/wp-content/uploads/2026/01/image.jpg",
+    "alt": "An image",
+    "width": 1280,
+    "height": 720,
+    "variants": [
+      {
+        "url": "/wp-content/uploads/2026/01/image-300x169.jpg",
+        "width": 300,
+        "height": 169
+      }
+    ]
+  },
+  "source": {
+    "system": "wordpress",
+    "sourceId": "123",
+    "capturedAt": "2026-01-16"
+  }
+}

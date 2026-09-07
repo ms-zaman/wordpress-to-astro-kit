@@ -1,0 +1,19 @@
+{
+  "name": "@wpk/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Design-token layer: CSS custom properties for colour, type, spacing and layout, plus the typed breakpoints custom properties cannot serve.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./fonts.css": "./src/fonts.css"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@wpk/config": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "slug": "team",
+  "title": "Team",
+  "locale": "en",
+  "cluster": "pages/team",
+  "updatedAt": "2026-01-01",
+  "parent": "about",
+  "form": "contact",
+  "bodyFormat": "markdown",
+  "source": { "system": "sample" }
+}

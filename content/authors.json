@@ -1,0 +1,9 @@
+[
+  {
+    "slug": "jane-doe",
+    "name": "Jane Doe",
+    "nicename": "jane",
+    "bio": "A sample author. Replace this registry with the site's real authors, read from the `wp/v2/users` route or from the author-archive links every post page carries.",
+    "source": { "system": "sample" }
+  }
+]

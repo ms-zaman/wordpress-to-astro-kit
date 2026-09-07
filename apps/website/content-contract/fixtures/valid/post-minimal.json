@@ -1,0 +1,11 @@
+{
+  "slug": "minimal",
+  "title": "Minimal",
+  "locale": "en",
+  "cluster": "posts/minimal",
+  "updatedAt": "2026-01-01",
+  "publishedAt": "2026-01-01",
+  "author": "jane-doe",
+  "categories": ["uncategorized"],
+  "source": { "system": "authored" }
+}

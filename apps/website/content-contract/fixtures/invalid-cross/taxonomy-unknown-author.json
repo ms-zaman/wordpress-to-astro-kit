@@ -1,0 +1,13 @@
+{
+  "kind": "taxonomy",
+  "entries": [
+    {
+      "collection": "posts",
+      "slug": "hello",
+      "author": "nobody",
+      "categories": ["news"],
+      "tags": []
+    }
+  ],
+  "registries": { "authors": ["jane"], "categories": ["news"], "tags": [] }
+}

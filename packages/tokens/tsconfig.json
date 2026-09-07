@@ -1,0 +1,4 @@
+{
+  "extends": "@wpk/config/tsconfig.base.json",
+  "include": ["src/**/*.ts"]
+}

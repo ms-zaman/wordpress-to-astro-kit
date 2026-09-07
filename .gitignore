@@ -1,0 +1,85 @@
+# =============================================================================
+# Principle: research artifacts are project EVIDENCE and are TRACKED by default.
+# Only ignore what is generated, temporary, machine-specific, or unsuitable for
+# version control. Never ignore research/ wholesale. See AGENTS.md §11.
+# =============================================================================
+
+# --- OS metadata -------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# --- Editor / IDE ------------------------------------------------------------
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+.vscode/settings.local.json
+
+# --- Secrets and credentials -------------------------------------------------
+# Never commit secrets, in any form, anywhere. AGENTS.md §11.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+secrets.*
+
+# --- Logs and diagnostics ----------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Node / Astro build output -----------------------------------------------
+node_modules/
+dist/
+build/
+.astro/
+.output/
+.vercel/
+.netlify/
+.cache/
+*.tsbuildinfo
+
+# --- Research artifacts: narrowly scoped ignores -----------------------------
+# TRACKED (do not add ignores for these): crawl exports and URL inventories,
+# Lighthouse/performance JSON, SEO exports, screenshots, reference material.
+# IGNORED below: only incomplete, temporary, or tool-scratch output.
+research/**/tmp/
+research/**/.tmp/
+research/**/*.tmp
+research/**/*.partial
+research/**/*.crdownload
+research/**/*.download
+research/**/.cache/
+research/crawls/**/.crawl-cache/
+# A crawl or audit log records the method and conditions of a capture
+# (AGENTS.md §7) and must stay reviewable.
+!research/**/logs/
+!research/**/*.log
+
+# --- Scratch -----------------------------------------------------------------
+scratch/
+tmp/
+*.bak
+*.orig
+*.rej
+
+# Full-page screenshots from `pnpm render:digest --shots`: regenerable from any
+# build, megabytes, and not diffable. CI uploads them as artifacts instead.
+render-digest-shots/
+
+# Playwright run output: a trace is a binary zip nobody can diff, and CI
+# uploads both as artifacts when the gate fails.
+test-results/
+playwright-report/

@@ -1,0 +1,15 @@
+{
+  "slug": "header",
+  "name": { "en": "Header menu (sample)" },
+  "source": { "system": "sample" },
+  "items": [
+    { "label": { "en": "Home" }, "href": "/" },
+    { "label": { "en": "Blog" }, "href": "/blog/" },
+    {
+      "label": { "en": "About" },
+      "href": "/about/",
+      "children": [{ "label": { "en": "Team" }, "href": "/about/team/" }]
+    },
+    { "label": { "en": "Contact" }, "href": "/contact/" }
+  ]
+}
