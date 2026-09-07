@@ -74,11 +74,18 @@ export function isPreservedMedia(url: string): boolean {
   );
 }
 
-/** The same reference served from the configured media origin. */
-export function mediaUrl(
-  url: string,
-  origin: string | undefined = mediaOrigin(),
-): string {
+/**
+ * The same reference served from a given media origin, or unchanged when
+ * there is none.
+ *
+ * `origin` is REQUIRED and is not defaulted to `mediaOrigin()`. A default
+ * parameter cannot express "explicitly no origin" — passing `undefined`
+ * selects the default — so the no-origin branch would become unreachable
+ * from every caller, tests included, the moment a live origin was
+ * configured, while still reading as covered. Callers that want the
+ * configured origin pass `mediaOrigin()`, which says so.
+ */
+export function mediaUrl(url: string, origin: string | undefined): string {
   const trimmed = url.trim();
   const absolute = PRESERVED_ABSOLUTE?.exec(trimmed);
   if (absolute)
@@ -102,7 +109,7 @@ const CSS_URL = /url\(\s*(["']?)([^)"']*)\1\s*\)/gi;
  */
 export function rewriteMediaHtml(
   html: string,
-  origin: string | undefined = mediaOrigin(),
+  origin: string | undefined,
 ): string {
   return html
     .replace(ATTRIBUTE, (whole, name: string, quote: string, value: string) => {
@@ -161,7 +168,7 @@ export interface ResponsiveMedia {
  */
 export function mediaSrcset(
   media: ResponsiveMedia,
-  origin: string | undefined = mediaOrigin(),
+  origin: string | undefined,
 ): string | undefined {
   const candidates = new Map<number, string>();
   for (const variant of media.variants ?? [])

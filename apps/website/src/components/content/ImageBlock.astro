@@ -7,7 +7,7 @@
 // re-emits the file at a new path — image optimisation is a decision with an
 // owner; and it does not invent alt text. A missing alt renders `alt=""`,
 // marking the image decorative, which is the only safe default.
-import { mediaSrcset, mediaUrl } from "../../rendering/media.ts";
+import { mediaOrigin, mediaSrcset, mediaUrl } from "../../rendering/media.ts";
 
 interface MediaRef {
   url: string;
@@ -37,14 +37,17 @@ const {
   sizes = "100vw",
 } = Astro.props;
 
-const srcset = media ? mediaSrcset(media) : undefined;
+// Read once per render and passed explicitly: `mediaUrl` takes no
+// default, so nothing can accidentally mean the configured origin.
+const origin = mediaOrigin();
+const srcset = media ? mediaSrcset(media, origin) : undefined;
 ---
 
 {
   media && (
     <figure class:list={["wpk-image", `wpk-image--${fit}`]}>
       <img
-        src={mediaUrl(media.url)}
+        src={mediaUrl(media.url, origin)}
         srcset={srcset}
         sizes={srcset === undefined ? undefined : sizes}
         alt={media.alt ?? ""}

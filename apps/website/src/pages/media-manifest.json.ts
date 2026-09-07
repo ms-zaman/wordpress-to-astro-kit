@@ -19,8 +19,9 @@ export const GET: APIRoute = async () => {
 
   const uploads = new Set<string>();
   const externalHosts = new Map<string, number>();
+  const origin = mediaOrigin();
   const note = (url: string) => {
-    if (isPreservedMedia(url)) uploads.add(mediaUrl(url));
+    if (isPreservedMedia(url)) uploads.add(mediaUrl(url, origin));
     else if (
       /\.(?:png|jpe?g|gif|webp|avif|svg|mp4|webm|pdf)(?:\?|$)/i.test(url)
     ) {
@@ -45,7 +46,7 @@ export const GET: APIRoute = async () => {
   for (const author of site.authors) if (author.avatar) note(author.avatar.url);
 
   const manifest = {
-    mediaOrigin: mediaOrigin() ?? null,
+    mediaOrigin: origin ?? null,
     uploads: [...uploads].sort(),
     uploadCount: uploads.size,
     externalHosts: Object.fromEntries(

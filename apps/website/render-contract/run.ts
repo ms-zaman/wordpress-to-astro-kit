@@ -592,6 +592,16 @@ check(
     "/wp-content/uploads/a.png",
 );
 check(
+  "the origin is required, so 'none' is expressible",
+  // It reads as a formality and it is not: while `mediaUrl` defaulted its
+  // second argument, passing `undefined` selected the CONFIGURED origin, so
+  // this assertion and the one above passed only while no live origin was
+  // set — and started failing the moment `kit:init` configured one, which is
+  // how the defect was found.
+  mediaUrl("/wp-content/uploads/a.png", "https://m.example") ===
+    "https://m.example/wp-content/uploads/a.png",
+);
+check(
   "a relative upload takes the configured origin",
   mediaUrl("/wp-content/uploads/a.png", "https://media.example") ===
     "https://media.example/wp-content/uploads/a.png",

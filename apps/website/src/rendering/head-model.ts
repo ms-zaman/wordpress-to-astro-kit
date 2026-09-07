@@ -14,7 +14,7 @@
  * | `twitter:card`, `twitter:title`, `twitter:description`     | `og:image` when the value is relative        |
  * | `BlogPosting` structured data (no URL fields)              | `canonical`, `WebSite`, `BreadcrumbList`     |
  */
-import { mediaUrl } from "./media.ts";
+import { mediaOrigin, mediaUrl } from "./media.ts";
 import { SITE_NAME, absoluteUrl, siteOrigin } from "./site-identity.ts";
 
 /** Meta-description bounds, in characters — where engines truncate or ignore. */
@@ -94,7 +94,7 @@ export function socialTags(input: HeadInput): MetaTag[] {
   const image =
     input.ogImage === undefined
       ? undefined
-      : absoluteUrl(mediaUrl(input.ogImage.url), origin);
+      : absoluteUrl(mediaUrl(input.ogImage.url, mediaOrigin()), origin);
   if (image !== undefined) {
     tags.push({ attribute: "property", key: "og:image", content: image });
     if (input.ogImage?.alt)

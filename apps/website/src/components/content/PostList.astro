@@ -11,7 +11,7 @@ import { Heading, Text, type SectionHeadingLevel } from "@wpk/ui";
 
 import ImageBlock from "./ImageBlock.astro";
 import { formatDate } from "../../rendering/post-view.ts";
-import { mediaUrl } from "../../rendering/media.ts";
+import { mediaOrigin, mediaUrl } from "../../rendering/media.ts";
 
 /**
  * How wide a card's image renders — one column under 768, two to 1024, three
@@ -59,6 +59,10 @@ const {
   headingAs = "h2",
   eagerCount = 3,
 } = Astro.props;
+
+// Read once per render and passed explicitly: `mediaUrl` takes no default,
+// so nothing can accidentally mean the configured origin.
+const origin = mediaOrigin();
 ---
 
 {
@@ -89,7 +93,7 @@ const {
               {post.author.avatar ? (
                 <img
                   class="wpk-post-card__avatar"
-                  src={mediaUrl(post.author.avatar.url)}
+                  src={mediaUrl(post.author.avatar.url, origin)}
                   alt=""
                   width="24"
                   height="24"

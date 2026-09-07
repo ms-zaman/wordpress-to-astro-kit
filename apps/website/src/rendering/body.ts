@@ -14,12 +14,16 @@
 import {
   deferBodyImages,
   inlineEmojiImages,
+  mediaOrigin,
   rewriteMediaHtml,
 } from "./media.ts";
 
-export function prepareBody(html: string): string {
+export function prepareBody(
+  html: string,
+  origin: string | undefined = mediaOrigin(),
+): string {
   return inlineEmojiImages(
-    deferBodyImages(rewriteMediaHtml(html.trim())),
+    deferBodyImages(rewriteMediaHtml(html.trim(), origin)),
   ).replace(
     /<(\/?)h1(\s[^>]*)?>/gi,
     (_whole, close: string, attributes: string | undefined) =>
