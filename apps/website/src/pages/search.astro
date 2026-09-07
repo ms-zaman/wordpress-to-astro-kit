@@ -7,6 +7,7 @@
 // their query in the URL, and a deep link with `?q=` runs on load.
 //
 // No provider, no dependency, no network beyond the site's own JSON.
+import { searchDescription } from "../rendering/archive-description.ts";
 import { Heading, Section, Text } from "@wpk/ui";
 
 import searchCore from "../search/search-core.js?raw";
@@ -41,8 +42,7 @@ const site = await loadSiteData();
 const seo = seoMetadata(
   {
     title: `Search – ${SITE_NAME}`,
-    // Long enough to clear `META_DESCRIPTION_MIN`; see ArchivePage.astro.
-    description: `Search every post, page and archive on ${SITE_NAME} by keyword.`,
+    description: searchDescription(SITE_NAME),
   },
   findOverride(site.overrides, SEARCH_ROUTE, site.locale),
 );

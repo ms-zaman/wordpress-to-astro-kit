@@ -10,6 +10,7 @@ import PaginationNav from "../components/content/PaginationNav.astro";
 import PostList, { type PostCard } from "../components/content/PostList.astro";
 import { pageCrumbs, trailCrumbs } from "../content-index/wayfinding.ts";
 import { firstProseParagraph, textOf } from "../rendering/post-view.ts";
+import { archiveDescription } from "../rendering/archive-description.ts";
 import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
 import { truncateAtWord } from "../rendering/portable-body.ts";
 import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
@@ -75,24 +76,18 @@ const seo = seoMetadata(
       page.page > 1
         ? `${route.title} – page ${page.page} – ${SITE_NAME}`
         : baseTitle,
-    // The fallback sentences are deliberately fuller than they need to read,
-    // because a description UNDER `META_DESCRIPTION_MIN` is worse than a plain
-    // one: a search engine ignores it and writes its own snippet from the
-    // page, throwing away the one sentence this site controlled. The short
-    // versions ("Posts filed under News on Acme.") measured 39 characters
-    // against a 50-character floor and `seo:audit` reported all four archives.
-    // Each form below clears the floor even with a one-word term and a short
-    // site name; the audit is what keeps that true.
+    // The fallback lives in `rendering/archive-description.ts`, pure, because
+    // it has to clear `META_DESCRIPTION_MIN` for EVERY term and site name —
+    // and inline here that was unverifiable and twice wrong. The rendering
+    // contract asserts the floor against single-character inputs.
     description: truncateAtWord(
       intro && intro !== ""
         ? intro
-        : route.archive === "posts"
-          ? `Browse every post published on ${SITE_NAME}, newest first.`
-          : route.archive === "author"
-            ? `Every post written by ${route.title} on ${SITE_NAME}, newest first.`
-            : route.archive === "tag"
-              ? `Every post tagged ${route.title} on ${SITE_NAME}, newest first.`
-              : `Browse every post filed under ${route.title} on ${SITE_NAME}, newest first.`,
+        : archiveDescription({
+            archive: route.archive,
+            title: route.title,
+            siteName: SITE_NAME,
+          }),
       META_DESCRIPTION_MAX,
     ),
   },

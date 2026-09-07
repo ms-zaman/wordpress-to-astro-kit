@@ -31,8 +31,14 @@ import { formDefinitions } from "../src/forms/definitions.ts";
 import { routingViolations, transportFor } from "../src/forms/routing.ts";
 import { prepareBody } from "../src/rendering/body.ts";
 import {
+  archiveDescriptionProblems,
+  shortestArchiveDescriptions,
+} from "../src/rendering/archive-description.ts";
+import {
   breadcrumbListJsonLd,
   canonicalUrl,
+  META_DESCRIPTION_MAX,
+  META_DESCRIPTION_MIN,
   socialTags,
 } from "../src/rendering/head-model.ts";
 import {
@@ -485,6 +491,31 @@ check(
 
 // ---------------------------------------------------------------------------
 console.log("\nThe head");
+
+// An archive with no index page falls back to a generated description, and
+// that sentence has to clear the floor for EVERY term and site name — not just
+// for the sample content's. It has been under the floor twice: once at 39
+// characters, and once at 47 after `kit:init --site-name "Acme"` replaced a
+// twelve-character name with a four-character one. Both times a person had
+// checked it by eye against the content that happened to be there.
+//
+// So it is asserted against the shortest inputs there are. If the shortest
+// clears the floor, all of them do.
+for (const { kind, text } of shortestArchiveDescriptions())
+  check(
+    `the ${kind} archive's fallback description clears the floor at its shortest (${text.length} chars)`,
+    text.length >= META_DESCRIPTION_MIN && text.length <= META_DESCRIPTION_MAX,
+    text,
+  );
+check(
+  "no archive fallback is under the floor",
+  archiveDescriptionProblems().length === 0,
+  archiveDescriptionProblems().join("; "),
+);
+check(
+  "each kind gets its own wording",
+  new Set(shortestArchiveDescriptions().map((entry) => entry.text)).size === 5,
+);
 const noOrigin = socialTags({
   title: "T",
   locale: "en",
