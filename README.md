@@ -22,6 +22,21 @@ design, so that the first thing you do is measure the real one.
 | **Quality gates**        | A rendering contract (90 assertions, no browser) and a build audit that reads `dist/` and checks the contract of the environment it was built for.                    |
 | **Governance**           | [AGENTS.md](AGENTS.md), an ADR template, a decision registry, a review map and a sign-off record — for the questions only a person can answer.                        |
 
+## What is here, and what is not yet
+
+This is release 0.1. Read this table before the quick start, so nothing below
+promises more than the repository holds.
+
+|                |                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Here**       | The Astro app and its seams · the content contracts · the rendering contract · the build audit · `kit:init` · the playbook, checklist and governance templates                                                                                                                                                                                                                                         |
+| **Not yet**    | The **capture and crawl tools** (URL census, REST capture, page capture) · the **render digest** (screenshot baselines) and the **release audit** that turns a sign-off into a gate · the browser gates (layout, contrast, accessibility) · content reconciliation against the live site. `migration.config.ts` already declares their settings; they are on the roadmap and nothing reads them today. |
+| **Limitation** | **One locale is routed.** Entries in other locales are validated (translation clusters) but not published — no URL strategy for translations is assumed. The seam is the `locale` argument of `resolveSiteRoutes`; multilingual routing is decision 5 in `decisions/ADR/`.                                                                                                                             |
+
+Until the capture tools land, Discovery in the playbook is done with any
+polite crawler and the REST API by hand; the config's pacing values are the
+discipline, and `research/` is where the evidence goes.
+
 ## Quick start
 
 ```sh
@@ -46,7 +61,7 @@ Requires Node 24 and pnpm 10.
 ## The shape of it
 
 ```
-migration.config.ts     the source site: origin, permalinks, crawl pacing
+migration.config.ts     the source site: origin, permalinks (read today); crawl settings (for tools not yet here)
 content/                pages, posts, registries, menus, redirects, SEO overrides
 apps/website/src/
   routing/              permalinks → the route table. One resolver, one catch-all page.

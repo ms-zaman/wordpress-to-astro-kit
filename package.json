@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A boilerplate and a procedure for migrating a WordPress site to Astro: discovery and capture tooling, content contracts, quality gates, and a minimal Astro app with the launch seams in place.",
+  "description": "A boilerplate and a procedure for migrating a WordPress site to Astro: a minimal Astro app with the launch seams in place, content contracts, quality gates, and the playbook \u2014 extracted from a real migration. Capture and crawl tooling is on the roadmap, not yet in the kit.",
   "license": "MIT",
   "packageManager": "pnpm@10.33.0",
   "engines": {

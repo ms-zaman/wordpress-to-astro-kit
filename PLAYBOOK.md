@@ -54,6 +54,10 @@ live and usually absent from it.
 Write the inventory to `research/` with the date, the method and the
 conditions. It is the left-hand side of every later comparison.
 
+> **The kit does not ship a crawler yet** (README, "What is here, and what is
+> not yet"). Any polite crawler does; `migration.config.ts`'s `crawl` block is
+> the discipline to follow, and the user agent there is what to identify as.
+
 > **Trap.** A firewall that notices a burst will block the REST API for an
 > hour or more while pages keep answering 200. An inventory captured in that
 > window is FALSE and looks fine. Pace every loop (`migration.config.ts`

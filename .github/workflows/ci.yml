@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     # `dev` is the integration branch: the merge result of two feature branches
     # is the thing a per-PR run never validates. `test` is the testing stage
@@ -57,14 +58,35 @@ jobs:
       - name: Build and build audit
         run: pnpm render:build-audit
 
-      # The production contract, audited on a production build. With sample
-      # content in the tree this step FAILS — deliberately. Remove the sample
-      # content when your migration lands and it goes green.
-      - name: Production build audit
-        if: false
+      - name: Suites
+        run: pnpm test:all
+
+  # The production contract, audited on a production build — on demand, from
+  # the Actions tab. Not on every push: while sample content is in the tree
+  # this job FAILS, deliberately, and a job that is red by design on every
+  # push teaches people to ignore red. Run it when your migration lands; it
+  # goes green when the last sample entry is gone.
+  production-audit:
+    name: Production build audit (on demand)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build for production and audit it
         run: |
           WPK_SITE_ENV=production pnpm build
           pnpm --filter @wpk/website render:build-audit
-
-      - name: Suites
-        run: pnpm test:all

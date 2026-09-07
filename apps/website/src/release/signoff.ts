@@ -15,6 +15,12 @@
 // sign-off carries forward to a descendant commit for exactly as long as the
 // render digest is unchanged. The digest is the fingerprint of what every
 // route looks like — the same scope a reviewer walked — so the check is exact.
+//
+// NOT YET WIRED. Nothing in this release computes a digest or calls
+// `signoffStatus`: the producer (`scripts/render-digest`) and the consumer
+// (`scripts/release-audit`) are on the roadmap. The model is here so the
+// record's shape is settled; until those land, a row in `SIGNOFFS` is a
+// record for a person to read, not a gate a build passes.
 
 export interface Signoff {
   /** The full 40-character commit SHA that was reviewed. */

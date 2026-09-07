@@ -1,10 +1,18 @@
 // migration.config.ts — the one file that says which WordPress site this
 // project migrates FROM and how its URLs map onto this build.
 //
-// Every capture, audit and reconciliation script reads it, and so does the
-// Astro app (for the permalink structure and the media origin). Nothing else
-// in the kit names the source site, so a kit configured for a different site
-// is this file and the content it produces — not a fork.
+// What reads it TODAY: the Astro app, for the permalink structure
+// (`permalinks`) and the media origin (`liveOrigin`). Nothing else in the kit
+// names the source site, so a kit configured for a different site is this
+// file and the content it produces — not a fork.
+//
+// What does NOT read it yet: `evidenceDir`, `crawl`, `liveLanguagePrefixes`
+// and `routePairs` are the settings of the capture, crawl and reconciliation
+// tools, which are on the roadmap (README, "What is here, and what is not
+// yet") and not in this release. They are declared here so the shape is
+// settled and so a project can fill them in before the tools land — but a
+// value in one of them changes nothing today. The kit says so rather than
+// letting a field that nothing reads look like a feature.
 //
 // `pnpm kit:init` writes the origins. Everything else is yours to edit.
 
