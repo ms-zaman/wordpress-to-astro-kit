@@ -74,8 +74,9 @@ export interface CrawlSettings {
    */
   readonly mediaDelayMs: number;
   /**
-   * How the crawler identifies itself. Honest identification with a contact:
-   * the capture tools refuse to run while this still says to set it.
+   * How a crawler identifies itself. Honest identification with a contact.
+   * When the capture tools land they will refuse to run while this still
+   * says to set it; today it is a value for the crawler you bring.
    */
   readonly userAgent: string;
 }
@@ -93,8 +94,8 @@ export interface MigrationConfig {
   /**
    * The WordPress site being migrated: scheme and host, no trailing slash.
    * `undefined` until `pnpm kit:init --live-origin` (or you) sets it. The
-   * capture tools refuse to run without it; the media seam passes uploads
-   * through unchanged without it.
+   * media seam passes uploads through unchanged without it; the capture
+   * tools, when they land, will refuse to run without it.
    */
   readonly liveOrigin: string | undefined;
   /**
