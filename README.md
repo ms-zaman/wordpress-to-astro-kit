@@ -13,14 +13,15 @@ design, so that the first thing you do is measure the real one.
 
 ## What you get
 
-|                          |                                                                                                                                                                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **The procedure**        | [PLAYBOOK.md](PLAYBOOK.md) — Day 0 through cutover, with the traps that cost the original migration time. [CHECKLIST.md](CHECKLIST.md) is the copy-pasteable version.                                            |
-| **A working Astro site** | Pages, posts, category/tag/author archives, pagination, search, a form, breadcrumbs, and the whole head — at **your** WordPress URLs, from one permalink config.                                                 |
-| **The launch seams**     | One variable flips preview↔production. One names the media host. One per form names its endpoint. Nothing else changes at cutover.                                                                               |
-| **Content contracts**    | Zod schemas per content set, cross-entry rules, and a fixture suite that proves the schemas still reject what they must.                                                                                         |
-| **Twelve quality gates** | Content, docs, rendering, the built artifact, accessibility, SEO, overflow, rendered contrast, appearance, the controls operated in a browser, and one release verdict over all of it. See [scripts/](scripts/). |
-| **Governance**           | [AGENTS.md](AGENTS.md), an ADR template, a decision registry, a review map and a sign-off record — for the questions only a person can answer.                                                                   |
+|                          |                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The procedure**        | [PLAYBOOK.md](PLAYBOOK.md) — Day 0 through cutover, with the traps that cost the original migration time. [CHECKLIST.md](CHECKLIST.md) is the copy-pasteable version.                                                                          |
+| **A working Astro site** | Pages, posts, category/tag/author archives, pagination, search, a form, breadcrumbs, and the whole head — at **your** WordPress URLs, from one permalink config.                                                                               |
+| **The launch seams**     | One variable flips preview↔production. One names the media host. One per form names its endpoint. Nothing else changes at cutover.                                                                                                             |
+| **Content contracts**    | Zod schemas per content set, cross-entry rules, and a fixture suite that proves the schemas still reject what they must.                                                                                                                       |
+| **Discovery tooling**    | A polite crawler and URL diff, a REST content census, a capture that reports which bodies did not come back whole, and a reconciler that asks whether your page says what the source page says.                                                |
+| **Fourteen gates**       | Content, docs, rendering, the built artifact, accessibility, SEO, overflow, rendered contrast, appearance, the controls operated in a browser, the URL diff, the reconciler, and one release verdict over all of it. See [scripts/](scripts/). |
+| **Governance**           | [AGENTS.md](AGENTS.md), an ADR template, a decision registry, a review map and a sign-off record — for the questions only a person can answer.                                                                                                 |
 
 ## What is here, and what is not yet
 
@@ -30,7 +31,7 @@ repository holds.
 |                |                                                                                                                                                                                                                                                                                                                 |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Here**       | The Astro app and its seams · the content contracts · the twelve gates in [scripts/](scripts/), each with its own suite · `kit:init` · the playbook, checklist and governance templates                                                                                                                         |
-| **Not yet**    | The **capture and crawl tools** — URL census, REST capture, page capture — and **content reconciliation** against the live site. `migration.config.ts` declares their settings (`evidenceDir`, `crawl`, `liveLanguagePrefixes`, `routePairs`); those four fields have no reader today and the file says so.     |
+| **Not yet**    | Nothing in the procedure is unsupported. The one step the kit deliberately leaves to you is the **transform** from a capture to your content entries — see below.                                                                                                                                               |
 | **Limitation** | **One locale is routed.** Entries in other locales are validated (translation clusters) but not published — no URL strategy for translations is assumed. The seam is the `locale` argument of `resolveSiteRoutes`; multilingual routing is decision 5 in `decisions/ADR/`.                                      |
 | **Limitation** | **No render-digest baselines ship.** A digest is only comparable across machines when the site self-hosts its fonts, and the kit ships a system font stack until you measure a real design. Record yours after your first walk — [research/render-digest/](research/render-digest/README.md) says when and how. |
 
@@ -118,6 +119,13 @@ gates had passed.
 **Sample content cannot ship.** Every entry carries `source.system`, and a
 production build fails while any of it says `sample`. That is the gate that
 stops the kit's own pages from becoming somebody's website.
+
+**Every tool that touches the source site reads and never writes.** GET only,
+same origin, one request at a time, the delay from your config between every
+one, and an honest user agent the tools warn about while it is still the
+placeholder. A failure is recorded rather than retried, because retrying into a
+rate limit deepens it — and a crawl taken through one returns a smaller site
+that looks entirely plausible.
 
 ## Where it came from
 

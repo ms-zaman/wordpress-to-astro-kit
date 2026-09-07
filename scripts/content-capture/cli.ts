@@ -24,21 +24,20 @@ import {
 } from "../site-map-audit/fetch.ts";
 import { capturePostType, writeCapture } from "./capture.ts";
 import { WordPressRest } from "./rest.ts";
+import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
 
-const argv = process.argv.slice(2);
-const command = argv.find((argument) => !argument.startsWith("--")) ?? "census";
-const has = (flag: string): boolean => argv.includes(flag);
-const value = (flag: string, fallback: string): string => {
-  const index = argv.indexOf(flag);
-  return index >= 0 && argv[index + 1] !== undefined
-    ? argv[index + 1]!
-    : fallback;
-};
+const args = parseArgs(process.argv.slice(2), {
+  valued: ["--type", "--limit"],
+  defaultCommand: "census",
+});
+const command = args.command;
+const value = args.value;
+const has = args.has;
 
 const settings = settingsFromConfig();
 const reader = new PoliteReader(settings);

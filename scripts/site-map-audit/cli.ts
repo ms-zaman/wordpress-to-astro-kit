@@ -28,20 +28,20 @@ import {
   type LiveRecord,
 } from "./diff.ts";
 import { readDistRoutes } from "./local.ts";
+import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
 
-const argv = process.argv.slice(2);
-const command = argv.find((argument) => !argument.startsWith("--")) ?? "diff";
-const value = (flag: string, fallback: string): string => {
-  const index = argv.indexOf(flag);
-  return index >= 0 && argv[index + 1] !== undefined
-    ? argv[index + 1]!
-    : fallback;
-};
+const args = parseArgs(process.argv.slice(2), {
+  valued: ["--max-requests", "--waves", "--inventory", "--dist"],
+  defaultCommand: "diff",
+});
+const command = args.command;
+const value = args.value;
+const has = args.has;
 
 if (command === "crawl") {
   // A misconfiguration is a message, not a stack trace. Running the crawl is

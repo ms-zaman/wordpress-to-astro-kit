@@ -54,10 +54,11 @@ live and usually absent from it.
 Write the inventory to `research/` with the date, the method and the
 conditions. It is the left-hand side of every later comparison.
 
-> **The kit does not ship a crawler yet** (README, "What is here, and what is
-> not yet"). Any polite crawler does; `migration.config.ts`'s `crawl` block is
-> the discipline to follow, and the user agent there is what to identify as.
-> Write what you get into `research/`, with the date and the method.
+> `pnpm sitemap:crawl` does this: `robots.txt` to sitemaps to links, paced by
+> `migration.config.ts`'s `crawl` block, written dated into `research/`. Then
+> `pnpm sitemap:audit` classifies every URL against your build and fails while
+> any is unaccounted for. **The sitemap is not the site** — measured on a real
+> one, eight sitemap documents listed 431 URLs and links found 955 more.
 
 > **Trap.** A firewall that notices a burst will block the REST API for an
 > hour or more while pages keep answering 200. An inventory captured in that
@@ -66,9 +67,11 @@ conditions. It is the left-hand side of every later comparison.
 
 ### 1.2 The content census
 
-Over the public REST API: `wp/v2/types`, `wp/v2/taxonomies`, then per type
-`?per_page=1` and read `x-wp-total`. Count posts, pages, every custom post
-type, every taxonomy, users, media.
+`pnpm content:census` does exactly this: `wp/v2/types`, `wp/v2/taxonomies`, then
+per type `?per_page=1` and read `x-wp-total`. One request per route, and it
+sizes the whole migration — on a real site, 4,786 attachments, 278 posts, 121
+docs and 30 pages in 29 requests. It also names the routes that genuinely
+refuse an anonymous reader.
 
 Read a few bodies. Note which are block-editor, which are classic, which are
 a page builder — a builder-rendered post often returns only an intro over
@@ -181,8 +184,12 @@ Small and classic first, volume second, builder-heavy last.
 
 For each set, the same loop:
 
-1. **Capture to `research/`** as evidence. Fetch and transform stay separate
-   modules, so they can be reviewed apart.
+1. **Capture to `research/`** as evidence — `pnpm content:capture --type <name>`.
+   Fetch and transform stay separate modules, so they can be reviewed apart;
+   the capture is written for you and the transform is yours, deliberately.
+   The capture reports which bodies did not come back whole and fetches those
+   pages, because a page builder keeps its document in postmeta and
+   `content.rendered` carries only what the classic editor held.
 2. **Carry the body verbatim.** It is the source's rendered HTML. Do not
    convert it to Markdown; do not reword it. Put migrated bodies in
    `.prettierignore` — a formatter is not supposed to touch transcribed
@@ -200,6 +207,10 @@ For each set, the same loop:
    per-template-family because of exactly that.
 6. **After importing, LOOK at the listing and the archive** at 1440 and 375,
    beside the live one.
+6b. **Reconcile the pages you have built.** Add a row to `routePairs`, run
+   `pnpm content:reconcile-fetch` once, and `pnpm content:reconcile` from then
+   on: it fails on any string the source paints that yours does not say, and on
+   any copy yours says that the source has no trace of.
 7. `pnpm validate` green, then the set is done.
 
 > **What happened, twice.** Importing 251 posts broke twelve checks and not

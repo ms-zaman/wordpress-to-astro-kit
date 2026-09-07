@@ -40,6 +40,7 @@ be able to run everything in the first list.
 | [`docs-validator/`](docs-validator/)           | Does every cross-reference in the documentation still resolve?                                                                                |
 | [`site-map-audit/`](site-map-audit/)           | What does the source site publish, and does this build account for all of it?                                                                 |
 | [`content-capture/`](content-capture/)         | What content exists on the source site, will it hand it over, and which bodies did not come back whole?                                       |
+| [`content-reconcile/`](content-reconcile/)     | Does your page SAY what the source page says, and is anything on it invented?                                                                 |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |
@@ -79,8 +80,8 @@ Listed plainly, because this is the part people forget:
   the project this came from, five hard-coded sentences saying "this preview
   does not send messages yet" rendered on 306 public pages of a production
   build, and every environment-aware surface was correct.
-- **Whether your page says what the source page says.** `site-map-audit` proves
-  a URL exists on both sides. Whether the PAGE at it carries the same content is
-  content reconciliation, which is on the roadmap and is not here.
+- **Whether a page is laid out right.** `content-reconcile` proves your page
+  says what the source page says; two pages that say the same words in a
+  different arrangement reconcile clean.
 
 PLAYBOOK.md §7 step 5 is the walk. Nothing in this directory replaces it.
