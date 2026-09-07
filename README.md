@@ -34,9 +34,12 @@ repository holds.
 | **Limitation** | **One locale is routed.** Entries in other locales are validated (translation clusters) but not published — no URL strategy for translations is assumed. The seam is the `locale` argument of `resolveSiteRoutes`; multilingual routing is decision 5 in `decisions/ADR/`.                                      |
 | **Limitation** | **No render-digest baselines ship.** A digest is only comparable across machines when the site self-hosts its fonts, and the kit ships a system font stack until you measure a real design. Record yours after your first walk — [research/render-digest/](research/render-digest/README.md) says when and how. |
 
-Until the capture tools land, Discovery in the playbook is done with any polite
-crawler and the REST API by hand; the config's pacing values are the discipline,
-and [research/](research/README.md) is where the evidence goes.
+`pnpm sitemap:crawl` covers the URL census half of Discovery: it reads the
+source site politely, classifies every URL by your own permalink config, and
+[diffs it against your build](scripts/site-map-audit/README.md). Until the
+capture tools land, reading the CONTENT is still done with the REST API by
+hand; the config's pacing values are the discipline, and
+[research/](research/README.md) is where the evidence goes.
 
 ## Quick start
 
@@ -91,6 +94,7 @@ scripts/                the gate ladder — see scripts/README.md
   browser-tests/        the controls, operated
   release-audit/        is this a release candidate, and has a person walked it?
   docs-validator/       does every cross-reference still resolve?
+  site-map-audit/       what the source site publishes, against what this build does
   kit-init/             making the placeholder prefix yours
 ```
 

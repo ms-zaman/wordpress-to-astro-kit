@@ -12,20 +12,21 @@ or repairs anything.
 
 Run in this order. Each rung reads something the one before it produced.
 
-|     | Gate                      | Reads                                    | Needs a browser |
-| --- | ------------------------- | ---------------------------------------- | --------------- |
-| 1   | `pnpm content`            | the content tree                         | no              |
-| 2   | `pnpm docs:validate`      | `docs/`, `decisions/`                    | no              |
-| 3   | `pnpm render`             | the route and rendering models           | no              |
-| 4   | `pnpm render:build-audit` | `dist/`                                  | no              |
-| 5   | `pnpm preview:audit`      | `dist/`, as an artifact                  | no              |
-| 6   | `pnpm a11y:audit`         | `dist/` and the CSS it shipped           | no              |
-| 7   | `pnpm seo:audit`          | `dist/`                                  | no              |
-| 8   | `pnpm layout:audit`       | every route at six widths                | **yes**         |
-| 9   | `pnpm contrast:audit`     | every route at two widths                | **yes**         |
-| 10  | `pnpm render:digest`      | every route, against a recorded baseline | **yes**         |
-| 11  | `pnpm test:browser`       | the controls, operated                   | **yes**         |
-| 12  | `pnpm release:review`     | all of the above, as one verdict         | no              |
+|     | Gate                      | Reads                                       | Needs a browser |
+| --- | ------------------------- | ------------------------------------------- | --------------- |
+| 1   | `pnpm content`            | the content tree                            | no              |
+| 2   | `pnpm docs:validate`      | `docs/`, `decisions/`                       | no              |
+| 2b  | `pnpm sitemap:audit`      | a crawl of the source site, against `dist/` | no              |
+| 3   | `pnpm render`             | the route and rendering models              | no              |
+| 4   | `pnpm render:build-audit` | `dist/`                                     | no              |
+| 5   | `pnpm preview:audit`      | `dist/`, as an artifact                     | no              |
+| 6   | `pnpm a11y:audit`         | `dist/` and the CSS it shipped              | no              |
+| 7   | `pnpm seo:audit`          | `dist/`                                     | no              |
+| 8   | `pnpm layout:audit`       | every route at six widths                   | **yes**         |
+| 9   | `pnpm contrast:audit`     | every route at two widths                   | **yes**         |
+| 10  | `pnpm render:digest`      | every route, against a recorded baseline    | **yes**         |
+| 11  | `pnpm test:browser`       | the controls, operated                      | **yes**         |
+| 12  | `pnpm release:review`     | all of the above, as one verdict            | no              |
 
 `pnpm validate` runs 1–7 and every suite. `pnpm stage` runs 8–12. CI splits
 them into two jobs for the same reason: a machine without Chrome should still
@@ -37,6 +38,7 @@ be able to run everything in the first list.
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`lib/`](lib/)                                 | The shared seams: a Chrome driver, a static server, route discovery, the build's own manifest                                                 |
 | [`docs-validator/`](docs-validator/)           | Does every cross-reference in the documentation still resolve?                                                                                |
+| [`site-map-audit/`](site-map-audit/)           | What does the source site publish, and does this build account for all of it?                                                                 |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |
@@ -76,7 +78,8 @@ Listed plainly, because this is the part people forget:
   the project this came from, five hard-coded sentences saying "this preview
   does not send messages yet" rendered on 306 public pages of a production
   build, and every environment-aware surface was correct.
-- **Whether your page says what the source page says.** Content reconciliation
-  against the live site is on the roadmap and is not here.
+- **Whether your page says what the source page says.** `site-map-audit` proves
+  a URL exists on both sides. Whether the PAGE at it carries the same content is
+  content reconciliation, which is on the roadmap and is not here.
 
 PLAYBOOK.md §7 step 5 is the walk. Nothing in this directory replaces it.
