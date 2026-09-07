@@ -119,6 +119,14 @@ URL. Decide, write a profile into `postTypes`, or record that it is not
 migrating. [scripts/custom-types/](scripts/custom-types/README.md) states what a
 profile can and cannot express.
 
+**And every taxonomy.** The census answers the same five ways for taxonomies.
+The URL shape is the part nobody can discover: measured, `wp/v2/taxonomies`
+carries no rewrite and a taxonomy's name is not its URL base — one live install
+serves `doc_category` terms at `/docs-category/`. Open a term archive on the
+source site and read the prefix off the address bar; a captured term's `link`
+field is the evidence to check it against.
+[scripts/taxonomies/](scripts/taxonomies/README.md) states that boundary.
+
 ### 1.4 Measure the design — before building anything on it
 
 Open the live site in a real browser and read computed styles: font families

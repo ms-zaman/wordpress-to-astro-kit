@@ -14,7 +14,9 @@ export interface ValidationIssue {
     | "page-parent-unknown"
     | "page-parent-cycle"
     /** A content directory that no collection claims — see read-entries.ts. */
-    | "entry-directory-unclaimed";
+    | "entry-directory-unclaimed"
+    /** A registry JSON file that no collection claims. */
+    | "registry-file-unclaimed";
   message: string;
 }
 

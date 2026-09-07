@@ -6,7 +6,11 @@ import { getCollection, type CollectionEntry } from "astro:content";
 import { migration } from "../../../../migration.config.ts";
 import { defaultLocale } from "../content-model/shared.ts";
 import type { CustomTypeEntryData } from "../content-model/custom-type.ts";
-import { resolveSiteRoutes, type SiteRouteTable } from "./resolver.ts";
+import {
+  resolveSiteRoutes,
+  type SiteRouteTable,
+  type TaxonomyTermRow,
+} from "./resolver.ts";
 
 export type PostEntry = CollectionEntry<"posts">;
 export type PageEntry = CollectionEntry<"pages">;
@@ -41,6 +45,15 @@ export interface SiteData extends SiteRoutes {
   readonly allPages: readonly PageEntry[];
   /** Every custom-type entry in EVERY locale, by collection. */
   readonly allCustom: Readonly<Record<string, readonly CustomEntry[]>>;
+  /**
+   * Every taxonomy term, routed or not, by registry collection.
+   *
+   * A term registry has no locale filter — a term is one row carrying a name
+   * per language, the way `categories.json` does — so this is the same set the
+   * resolver saw. It exists so the manifest can name terms a STORED-ONLY
+   * taxonomy holds, which would otherwise never reach the integrity gate.
+   */
+  readonly allTerms: Readonly<Record<string, readonly TaxonomyTermRow[]>>;
 }
 
 /**
@@ -80,6 +93,20 @@ export async function loadSiteData(
     custom[profile.collection] = entries;
   }
 
+  // Taxonomy term registries, by collection. Same cast, same reason: the
+  // collection names are configuration, so Astro's generated types cannot know
+  // them, and `content.config.ts` defines every one from this same list.
+  const terms: Record<string, readonly TaxonomyTermRow[]> = {};
+  const allTerms: Record<string, readonly TaxonomyTermRow[]> = {};
+  for (const taxonomy of migration.taxonomies) {
+    const rows = (await getCollection(
+      taxonomy.collection as Parameters<typeof getCollection>[0],
+    )) as unknown as readonly { data: TaxonomyTermRow }[];
+    const values = rows.map((row) => row.data);
+    terms[taxonomy.collection] = values;
+    allTerms[taxonomy.collection] = values;
+  }
+
   const table = resolveSiteRoutes<PostEntry, PageEntry, CustomEntry>({
     posts,
     pages,
@@ -87,6 +114,7 @@ export async function loadSiteData(
     categories: categoryRows,
     tags: tagRows,
     custom,
+    terms,
     locale,
   });
   return {
@@ -99,5 +127,6 @@ export async function loadSiteData(
     allPosts: posts,
     allPages: pages,
     allCustom,
+    allTerms,
   };
 }

@@ -7,6 +7,7 @@ import ArchivePage from "../templates/ArchivePage.astro";
 import ContentPage from "../templates/ContentPage.astro";
 import CustomArchivePage from "../templates/CustomArchivePage.astro";
 import CustomTypePage from "../templates/CustomTypePage.astro";
+import TaxonomyArchivePage from "../templates/TaxonomyArchivePage.astro";
 import PostPage from "../templates/PostPage.astro";
 import {
   CUSTOM_ARCHIVE_TEMPLATES,
@@ -61,6 +62,8 @@ const CustomListingTemplate = ((collection === undefined
     <CustomEntryTemplate route={route} site={site} />
   ) : route.kind === "custom-archive" ? (
     <CustomListingTemplate route={route} site={site} />
+  ) : route.kind === "taxonomy-archive" ? (
+    <TaxonomyArchivePage route={route} site={site} />
   ) : (
     <ArchivePage route={route} site={site} />
   )

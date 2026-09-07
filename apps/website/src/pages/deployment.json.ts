@@ -28,9 +28,37 @@ import {
   authorPath,
   customTypePath,
   customTypeArchivePath,
+  termPath,
 } from "../routing/permalink.ts";
 
 const redirectMap = parseRedirectMap(redirectsJson);
+
+/**
+ * A term's ancestor slugs, outermost first.
+ *
+ * Recomputed here rather than taken from the route table on purpose: this list
+ * describes what the content tree INTENDS, and a term the resolver withheld
+ * has no route to read a chain off. A broken chain yields an empty one, and
+ * the resolver is the thing that fails on it.
+ */
+function ancestorSlugs(
+  taxonomy: { readonly collection: string },
+  term: { readonly slug: string; readonly parent?: string },
+  rows: readonly { readonly slug: string; readonly parent?: string }[] = [],
+): string[] {
+  const bySlug = new Map(rows.map((row) => [row.slug, row]));
+  const chain: string[] = [];
+  const seen = new Set<string>([term.slug]);
+  let current = term;
+  while (current.parent !== undefined) {
+    const parent = bySlug.get(current.parent);
+    if (parent === undefined || seen.has(parent.slug)) break;
+    seen.add(parent.slug);
+    chain.unshift(parent.slug);
+    current = parent;
+  }
+  return chain;
+}
 
 /**
  * A permalink, or nothing when the pattern cannot be expanded for this entry.
@@ -75,6 +103,11 @@ export const GET: APIRoute = async () => {
       name: profile.collection,
       entries: (site.allCustom[profile.collection] ?? []).length,
       routed: (site.custom[profile.collection] ?? []).length,
+    })),
+    ...site.taxonomies.map((taxonomy) => ({
+      name: taxonomy.collection,
+      entries: (site.allTerms[taxonomy.collection] ?? []).length,
+      routed: (site.terms[taxonomy.collection] ?? []).length,
     })),
     { name: "navigation", entries: navigation.length, routed: 0 },
     { name: "seoOverride", entries: site.overrides.length, routed: 0 },
@@ -136,6 +169,27 @@ export const GET: APIRoute = async () => {
           ]
         : []),
     ]),
+    // Taxonomy terms. Every term of every profile, published or not — the
+    // lesson this kit has now paid for twice: content that never enters the
+    // intended inventory cannot be reported missing by anything downstream.
+    ...site.taxonomies.flatMap((taxonomy) =>
+      (site.allTerms[taxonomy.collection] ?? []).map((term) => ({
+        id: rowId(taxonomy.collection, term.slug),
+        expectedRoute: taxonomy.published
+          ? safePath(() =>
+              termPath(
+                taxonomy,
+                term.slug,
+                ancestorSlugs(
+                  taxonomy,
+                  term,
+                  site.allTerms[taxonomy.collection] ?? [],
+                ),
+              ),
+            )
+          : undefined,
+      })),
+    ),
   ];
 
   const manifest = buildManifest({
@@ -143,7 +197,9 @@ export const GET: APIRoute = async () => {
       path: route.path,
       kind: route.kind,
       page:
-        route.kind === "archive" || route.kind === "custom-archive"
+        route.kind === "archive" ||
+        route.kind === "custom-archive" ||
+        route.kind === "taxonomy-archive"
           ? route.page.page
           : undefined,
       entry: identityOf(route),
@@ -163,6 +219,14 @@ export const GET: APIRoute = async () => {
       published: profile.published,
       archive: profile.archive.kind,
       taxonomies: profile.taxonomies.attached,
+    })),
+    taxonomies: site.taxonomies.map((taxonomy) => ({
+      name: taxonomy.name,
+      collection: taxonomy.collection,
+      published: taxonomy.published,
+      appliesTo: taxonomy.appliesTo,
+      hierarchical: taxonomy.hierarchical,
+      urlHierarchy: taxonomy.urlHierarchy,
     })),
     environment: readEnvironment(processEnvironment()),
   });

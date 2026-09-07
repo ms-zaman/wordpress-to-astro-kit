@@ -6,6 +6,11 @@ cluster: products/collator
 updatedAt: 2026-01-15
 publishedAt: 2026-01-12
 excerpt: A second product, so the archive lists more than one row.
+terms:
+  product_cat:
+    - laptop-stands
+  product_tag:
+    - sale
 source:
   system: sample
 ---

@@ -1,0 +1,5 @@
+[
+  { "slug": "featured", "name": { "en": "Featured" } },
+  { "slug": "sale", "name": { "en": "Sale" } },
+  { "slug": "laptops", "name": { "en": "Laptops" } }
+]

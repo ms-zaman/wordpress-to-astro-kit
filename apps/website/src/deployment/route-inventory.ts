@@ -43,6 +43,8 @@ export type RouteOrigin =
   | "custom"
   /** Page one of a custom type's listing. */
   | "custom-archive"
+  /** Page one of a custom taxonomy term's archive. */
+  | "taxonomy-archive"
   /** A retired URL answered with a meta-refresh page (`content/redirects.json`). */
   | "redirect";
 
@@ -70,7 +72,13 @@ export interface InventoryRoute {
 /** A resolved route, as the route table describes one. */
 export interface ResolvedRouteSummary {
   readonly path: string;
-  readonly kind: "page" | "post" | "archive" | "custom" | "custom-archive";
+  readonly kind:
+    | "page"
+    | "post"
+    | "archive"
+    | "custom"
+    | "custom-archive"
+    | "taxonomy-archive";
   /** For an archive: which page of it. */
   readonly page?: number;
   /** The content identity behind it. */
@@ -161,14 +169,17 @@ export function buildRouteInventory(input: InventoryInput): InventoryRoute[] {
     // Page 2..N of ANY listing is `pagination`, custom or not: the origin says
     // how the route came to exist, and "page three of a listing" is one answer
     // whichever collection it lists.
-    const origin: RouteOrigin =
-      route.kind === "archive" || route.kind === "custom-archive"
-        ? (route.page ?? 1) > 1
-          ? "pagination"
-          : route.kind === "custom-archive"
-            ? "custom-archive"
-            : "archive"
-        : route.kind;
+    const listing =
+      route.kind === "archive" ||
+      route.kind === "custom-archive" ||
+      route.kind === "taxonomy-archive";
+    const origin: RouteOrigin = listing
+      ? (route.page ?? 1) > 1
+        ? "pagination"
+        : route.kind === "archive"
+          ? "archive"
+          : route.kind
+      : route.kind;
     routes.push(page(route.path, origin, RESOLVER_SOURCE, route.entry));
   }
 
@@ -207,6 +218,7 @@ export function countRoutes(routes: readonly InventoryRoute[]): RouteCounts {
     pagination: 0,
     custom: 0,
     "custom-archive": 0,
+    "taxonomy-archive": 0,
     redirect: 0,
   };
   for (const route of routes) byOrigin[route.origin] += 1;

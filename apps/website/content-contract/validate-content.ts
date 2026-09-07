@@ -18,6 +18,8 @@ import {
   categorySchema,
   tagSchema,
 } from "../src/content-model/registries.ts";
+import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
+import { migration } from "../../../migration.config.ts";
 import { seoOverrideSchema } from "../src/content-model/seo-override.ts";
 import { localeRegistry } from "../src/content-model/shared.ts";
 import { parseRedirectMap } from "../src/deployment/redirects.ts";
@@ -115,6 +117,48 @@ assertUnique(
   tags.map((row) => row.slug),
 );
 console.log(`  tags:           ${tags.length} rows`);
+
+// ---------------------------------------------------------------------------
+// Custom taxonomy registries.
+//
+// Read here, from the FILE, and not only through Astro. Measured: adding a
+// second term with slug `laptops` to one registry produced a green build in
+// which Astro's `file()` loader had keyed the rows by slug and silently kept
+// ONE of them. The route for the first was gone, the manifest listed one term,
+// intended and emitted agreed, and `content:integrity` reported nothing —
+// because the duplicate never survived long enough for the resolver's own
+// check to see it.
+//
+// That is the third time this kit has met the same shape: a loader assigning
+// identity from content, and content that legitimately repeats. The filesystem
+// is the only authority that sees both rows.
+for (const taxonomy of migration.taxonomies) {
+  const file = `${taxonomy.collection}.json`;
+  const terms = validateRegistry(file, taxonomyTermSchema);
+  assertUnique(
+    file,
+    "slug",
+    terms.map((row) => row.slug),
+  );
+  const slugs = new Set(terms.map((row) => String(row.slug)));
+  for (const row of terms) {
+    if (row.parent === undefined) continue;
+    if (!taxonomy.hierarchical)
+      note(
+        `${file}: term "${String(row.slug)}" names a parent, but taxonomy ` +
+          `"${taxonomy.name}" is not hierarchical.`,
+      );
+    else if (!slugs.has(String(row.parent)))
+      note(
+        `${file}: term "${String(row.slug)}" names parent ` +
+          `"${String(row.parent)}", which is not a term in this registry.`,
+      );
+  }
+  console.log(
+    `  ${`${taxonomy.name}:`.padEnd(15)} ${terms.length} term(s)` +
+      `${taxonomy.published ? "" : " (stored only)"}`,
+  );
+}
 
 const seoOverrides = validateRegistry("seo/overrides.json", seoOverrideSchema);
 assertUnique(

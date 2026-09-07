@@ -22,6 +22,7 @@ import {
   findingsOfKind,
   localeExclusions,
   unpublishedTypeExclusions,
+  unpublishedTaxonomyExclusions,
   type Exclusion,
   type IntendedContent,
 } from "../../apps/website/src/deployment/content-integrity.ts";
@@ -61,6 +62,14 @@ let manifest: {
       published: boolean;
       archive: string;
       taxonomies: string[];
+    }[];
+    taxonomies?: {
+      name: string;
+      collection: string;
+      published: boolean;
+      appliesTo: string[];
+      hierarchical: boolean;
+      urlHierarchy: boolean;
     }[];
   };
   routes?: {
@@ -110,9 +119,15 @@ const withheldTypes = postTypeRecords
   .filter((record) => !record.published)
   .map((record) => ({ name: record.collection, type: record.name }));
 
+const taxonomyRecords = manifest.content?.taxonomies ?? [];
+const withheldTaxonomies = taxonomyRecords
+  .filter((record) => !record.published)
+  .map((record) => ({ name: record.collection, taxonomy: record.name }));
+
 const exclusions: Exclusion[] = [
   ...localeExclusions(intended, locale),
   ...unpublishedTypeExclusions(intended, withheldTypes),
+  ...unpublishedTaxonomyExclusions(intended, withheldTaxonomies),
 ];
 
 const report = checkContentIntegrity({
@@ -139,6 +154,15 @@ process.stdout.write(
             (record) =>
               `${record.collection}${record.published ? "" : " (withheld)"}` +
               `${record.archive === "archive" ? " +archive" : ""}`,
+          )
+          .join(", ")}\n`) +
+    (taxonomyRecords.length === 0
+      ? ""
+      : `  taxonomies      ${taxonomyRecords
+          .map(
+            (record) =>
+              `${record.collection}${record.published ? "" : " (stored only)"}` +
+              `${record.urlHierarchy ? " +hierarchy" : ""}`,
           )
           .join(", ")}\n`),
 );

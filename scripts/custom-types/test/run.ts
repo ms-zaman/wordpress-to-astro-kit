@@ -116,6 +116,10 @@ const resolve = (
     tags: [],
     custom,
     postTypes: profiles,
+    // Explicitly none: a test about post types must not drag in the site's
+    // configured taxonomies, whose `appliesTo` names collections these
+    // synthetic profiles do not have.
+    taxonomies: [],
     locale,
   });
 

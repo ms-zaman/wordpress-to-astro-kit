@@ -38,6 +38,19 @@ export interface PostTypeRecord {
   readonly taxonomies: readonly string[];
 }
 
+/** One custom taxonomy, as this build treated it. */
+export interface TaxonomyRecord {
+  readonly name: string;
+  readonly collection: string;
+  readonly published: boolean;
+  /** The post-type collections its terms file. */
+  readonly appliesTo: readonly string[];
+  /** Terms have parents. */
+  readonly hierarchical: boolean;
+  /** URLs carry those parents — WordPress's `rewrite['hierarchical']`. */
+  readonly urlHierarchy: boolean;
+}
+
 /** What one collection contributed to the build. */
 export interface CollectionSummary {
   readonly name: string;
@@ -77,6 +90,8 @@ export interface DeploymentManifest {
      * the same config the build read cannot notice the build ignoring it.
      */
     readonly postTypes: readonly PostTypeRecord[];
+    /** Custom taxonomies this build knows about, and how it treated each. */
+    readonly taxonomies: readonly TaxonomyRecord[];
   };
   /** The open hosting decision, stated in the artifact. */
   readonly hosting: {
@@ -103,6 +118,7 @@ export interface ManifestInput extends InventoryInput {
   readonly intended: readonly IntendedContent[];
   readonly locale: string;
   readonly postTypes?: readonly PostTypeRecord[];
+  readonly taxonomies?: readonly TaxonomyRecord[];
   readonly environment?: EnvironmentRecord;
 }
 
@@ -141,6 +157,9 @@ export function buildManifest(input: ManifestInput): DeploymentManifest {
       postTypes: [...(input.postTypes ?? [])].sort((left, right) =>
         left.collection.localeCompare(right.collection),
       ),
+      taxonomies: [...(input.taxonomies ?? [])].sort((left, right) =>
+        left.collection.localeCompare(right.collection),
+      ),
     },
     hosting: HOSTING_UNDECIDED,
   };
@@ -176,6 +195,7 @@ const ROUTE_ORIGINS = new Set([
   "pagination",
   "custom",
   "custom-archive",
+  "taxonomy-archive",
   "redirect",
 ]);
 

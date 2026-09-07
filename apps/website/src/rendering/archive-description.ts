@@ -34,13 +34,28 @@ import { META_DESCRIPTION_MIN } from "./head-model.ts";
  * `search` is not an archive route, and it is here because its description has
  * the same shape and therefore the same failure mode.
  */
-export type ArchiveKind = "posts" | "category" | "tag" | "author" | "search";
+export type ArchiveKind =
+  | "posts"
+  | "category"
+  | "tag"
+  | "author"
+  | "search"
+  /** One term of a CUSTOM taxonomy. */
+  | "term";
 
 export interface ArchiveDescriptionInput {
   readonly archive: ArchiveKind;
   /** The term, the author's name, or "" for the posts index. */
   readonly title: string;
   readonly siteName: string;
+  /**
+   * The taxonomy's human label, for a custom term.
+   *
+   * Required for `term` and meaningless elsewhere. WordPress allows one term
+   * name in two taxonomies, so without the label two archives write the same
+   * sentence — measured, and `seo:audit` failed on the duplicate.
+   */
+  readonly taxonomyLabel?: string;
 }
 
 /**
@@ -59,7 +74,32 @@ export function archiveDescription(input: ArchiveDescriptionInput): string {
   if (archive === "tag")
     return `Every post tagged ${title} on ${siteName}${tail}`;
   if (archive === "search") return searchDescription(siteName);
+  if (archive === "term")
+    return (
+      `Everything filed under the ${input.taxonomyLabel ?? "taxonomy"} ` +
+      `${title} on ${siteName}${tail}`
+    );
   return `Every post filed under ${title} on ${siteName}${tail}`;
+}
+
+/**
+ * A term's own description, when it is long enough to be one — else the
+ * fallback.
+ *
+ * A migrated term description is whatever somebody typed into WordPress, and
+ * measured on the kit's own fixtures one of them was 44 characters against a
+ * floor of 50. Truncating or padding it would be writing copy; falling back to
+ * the generated sentence keeps the page's own words when they are usable and
+ * an honest sentence when they are not.
+ */
+export function termDescription(
+  own: string | undefined,
+  input: Omit<ArchiveDescriptionInput, "archive">,
+): string {
+  const trimmed = own?.trim() ?? "";
+  return trimmed.length >= META_DESCRIPTION_MIN
+    ? trimmed
+    : archiveDescription({ ...input, archive: "term" });
 }
 
 /**
@@ -87,10 +127,22 @@ export function shortestArchiveDescriptions(): {
   kind: ArchiveKind;
   text: string;
 }[] {
-  const kinds: ArchiveKind[] = ["posts", "category", "tag", "author", "search"];
+  const kinds: ArchiveKind[] = [
+    "posts",
+    "category",
+    "tag",
+    "author",
+    "search",
+    "term",
+  ];
   return kinds.map((archive) => ({
     kind: archive,
-    text: archiveDescription({ archive, title: "A", siteName: "A" }),
+    text: archiveDescription({
+      archive,
+      title: "A",
+      siteName: "A",
+      taxonomyLabel: "A",
+    }),
   }));
 }
 

@@ -564,9 +564,13 @@ check(
   archiveDescriptionProblems().length === 0,
   archiveDescriptionProblems().join("; "),
 );
+// Derived from the list, not written as a number: adding a kind and forgetting
+// this line would make the check pass by describing itself.
+const shortest = shortestArchiveDescriptions();
 check(
   "each kind gets its own wording",
-  new Set(shortestArchiveDescriptions().map((entry) => entry.text)).size === 5,
+  new Set(shortest.map((entry) => entry.text)).size === shortest.length,
+  `${shortest.length} kind(s), ${new Set(shortest.map((e) => e.text)).size} distinct`,
 );
 const noOrigin = socialTags({
   title: "T",

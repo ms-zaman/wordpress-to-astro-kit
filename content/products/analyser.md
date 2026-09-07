@@ -6,6 +6,12 @@ cluster: products/analyser
 updatedAt: 2026-01-15
 publishedAt: 2026-01-10
 excerpt: A synthetic product fixture, so the custom-type path is exercised by the kit's own ladder.
+terms:
+  product_cat:
+    - laptops
+  product_tag:
+    - featured
+    - laptops
 source:
   system: sample
 ---

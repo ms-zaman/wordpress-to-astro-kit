@@ -12,6 +12,7 @@
 import {
   migration,
   type PostTypeProfile,
+  type TaxonomyProfile,
 } from "../../../../migration.config.ts";
 import { paginate, type PageOf } from "../content-index/pagination.ts";
 import { routeKey } from "./url-shape.ts";
@@ -20,6 +21,8 @@ import {
   categoryPath,
   customTypeArchivePath,
   customTypePath,
+  taxonomyProfileProblems,
+  termPath,
   pagePath,
   paginatedPath,
   permalinkProblems,
@@ -103,6 +106,10 @@ export interface RouteSources<
   readonly custom?: Readonly<Record<string, readonly Custom[]>>;
   /** The profiles to route. Defaults to `migration.config.ts`'s. */
   readonly postTypes?: readonly PostTypeProfile[];
+  /** Custom taxonomy terms, keyed by REGISTRY collection name. */
+  readonly terms?: Readonly<Record<string, readonly TaxonomyTermRow[]>>;
+  /** The taxonomy profiles to route. Defaults to `migration.config.ts`'s. */
+  readonly taxonomies?: readonly TaxonomyProfile[];
 }
 
 export type ArchiveKind = "posts" | "category" | "tag" | "author";
@@ -156,6 +163,40 @@ export interface CustomRoute<Custom> {
  * every post archive's item type a union that `ArchivePage` would have to
  * narrow at runtime — a type hole opened to save a file.
  */
+/** One term of a custom taxonomy, as its registry yields one. */
+export interface TaxonomyTermRow {
+  readonly slug: string;
+  readonly parent?: string;
+  readonly name: Readonly<Partial<Record<string, string>>>;
+  readonly description?: Readonly<Partial<Record<string, string>>>;
+  readonly sourceId?: number;
+}
+
+/**
+ * A custom taxonomy term's archive.
+ *
+ * Its own kind rather than a case hidden inside `custom-archive`, because the
+ * two answer different questions: a custom archive lists a whole collection,
+ * this lists the entries filed under one term, possibly drawn from several
+ * collections. A route carries everything an audit or a renderer needs —
+ * the taxonomy, the term, the ancestors, and the collections it drew from —
+ * so nothing downstream has to read a URL to find out what it is looking at.
+ */
+export interface TaxonomyArchiveRoute<Custom> {
+  readonly kind: "taxonomy-archive";
+  readonly path: string;
+  /** The term archive's own URL: page 1. */
+  readonly base: string;
+  readonly title: string;
+  readonly page: PageOf<Custom>;
+  readonly taxonomy: TaxonomyProfile;
+  readonly term: TaxonomyTermRow;
+  /** Outermost ancestor first; empty for a root term. */
+  readonly ancestors: readonly TaxonomyTermRow[];
+  /** The post-type collections this archive drew its entries from. */
+  readonly collections: readonly string[];
+}
+
 export interface CustomArchiveRoute<Custom> {
   readonly kind: "custom-archive";
   readonly path: string;
@@ -187,7 +228,8 @@ export type SiteRoute<Post, Page, Custom = never> =
   | PostRoute<Post>
   | ArchiveRoute<Post, Page>
   | CustomRoute<Custom>
-  | CustomArchiveRoute<Custom>;
+  | CustomArchiveRoute<Custom>
+  | TaxonomyArchiveRoute<Custom>;
 
 export interface SiteRouteTable<
   Post extends EntryLike<PostEntryData>,
@@ -221,6 +263,9 @@ export interface SiteRouteTable<
   readonly custom: Readonly<Record<string, readonly Custom[]>>;
   /** The profiles this table routed, so an audit need not re-read the config. */
   readonly postTypes: readonly PostTypeProfile[];
+  readonly taxonomies: readonly TaxonomyProfile[];
+  /** Every routed term, by registry collection. */
+  readonly terms: Readonly<Record<string, readonly TaxonomyTermRow[]>>;
 }
 
 /** The display name of a registry row in a locale, falling back to the default. */
@@ -231,6 +276,17 @@ export function nameFor(
 ): string {
   return row.name[locale] ?? row.name[defaultLocale] ?? row.slug;
 }
+
+/**
+ * The first locale a term has a name in, for a fallback that is never blank.
+ *
+ * A term registry is per-locale like the core ones, and a term migrated before
+ * its translation exists has a name in one language only. Falling back to the
+ * slug is the last resort, not the first.
+ */
+const defaultLocaleOf = (term: {
+  readonly name: Readonly<Partial<Record<string, string>>>;
+}): string => Object.keys(term.name)[0] ?? "";
 
 /** Posts newest first; two on one date order by slug so builds are stable. */
 export function orderPostsByDate<Post extends EntryLike<PostEntryData>>(
@@ -259,6 +315,8 @@ const describe = <
       return `${route.profile.name} "${route.entry.data.slug}"`;
     case "custom-archive":
       return `${route.profile.name} archive page ${route.page.page}`;
+    case "taxonomy-archive":
+      return `${route.taxonomy.name} term "${route.term.slug}" page ${route.page.page}`;
     case "archive":
       return `${route.archive} archive "${route.title}" page ${route.page.page}`;
   }
@@ -292,6 +350,13 @@ export function resolveSiteRoutes<
   if (profileProblems.length > 0)
     throw new Error(
       `migration.config.ts postTypes are not usable:\n  - ${profileProblems.join("\n  - ")}`,
+    );
+
+  const taxonomies = sources.taxonomies ?? migration.taxonomies;
+  const taxonomyIssues = taxonomyProfileProblems(taxonomies, postTypes);
+  if (taxonomyIssues.length > 0)
+    throw new Error(
+      `migration.config.ts taxonomies are not usable:\n  - ${taxonomyIssues.join("\n  - ")}`,
     );
 
   const { locale } = sources;
@@ -486,6 +551,113 @@ export function resolveSiteRoutes<
       });
   }
 
+  // Custom taxonomies. Every profile was validated above, so nothing here
+  // guesses — not the URL base, not whether ancestors appear in it, and not
+  // which collections a term files.
+  const routedTerms: Record<string, TaxonomyTermRow[]> = {};
+  for (const taxonomy of taxonomies) {
+    const rows = sources.terms?.[taxonomy.collection] ?? [];
+
+    // WordPress guarantees this and the kit enforces it rather than inventing
+    // a disambiguation WordPress does not have: `wp_unique_term_slug()` refuses
+    // a slug that already exists in the SAME taxonomy, appending a parent
+    // suffix or a number. Two terms sharing one slug here would share one URL.
+    const bySlug = new Map<string, TaxonomyTermRow>();
+    for (const row of rows) {
+      const existing = bySlug.get(row.slug);
+      if (existing !== undefined)
+        throw new Error(
+          `Taxonomy "${taxonomy.name}" has two terms with slug "${row.slug}". ` +
+            "WordPress does not allow that — wp_unique_term_slug() makes a " +
+            "colliding slug unique within its taxonomy — so one of these did " +
+            "not come from the source site, or the capture lost the suffix.",
+        );
+      bySlug.set(row.slug, row);
+    }
+
+    /** Outermost ancestor first. Throws on an unknown or looping parent. */
+    const ancestorsOf = (row: TaxonomyTermRow): TaxonomyTermRow[] => {
+      const chain: TaxonomyTermRow[] = [];
+      const seen = new Set<string>([row.slug]);
+      let current = row;
+      while (current.parent !== undefined) {
+        const parent = bySlug.get(current.parent);
+        if (parent === undefined)
+          throw new Error(
+            `Term "${row.slug}" in "${taxonomy.name}" names parent ` +
+              `"${current.parent}", which is not a term of that taxonomy.`,
+          );
+        if (seen.has(parent.slug))
+          throw new Error(
+            `Term "${row.slug}" in "${taxonomy.name}" has a parent chain that ` +
+              `loops through "${parent.slug}".`,
+          );
+        seen.add(parent.slug);
+        chain.unshift(parent);
+        current = parent;
+      }
+      return chain;
+    };
+
+    // A parent on a flat taxonomy is data the URL model cannot express, and
+    // silently ignoring it would file a term somewhere the source did not.
+    if (!taxonomy.hierarchical)
+      for (const row of rows)
+        if (row.parent !== undefined)
+          throw new Error(
+            `Term "${row.slug}" names a parent, but taxonomy ` +
+              `"${taxonomy.name}" is not hierarchical. WordPress refuses this ` +
+              "too — rest_taxonomy_not_hierarchical.",
+          );
+
+    routedTerms[taxonomy.collection] = taxonomy.published ? [...rows] : [];
+    if (!taxonomy.published) continue;
+
+    for (const term of rows) {
+      const ancestors = ancestorsOf(term);
+      // The union across every collection the taxonomy applies to, ordered the
+      // way a custom archive is. One taxonomy on two types is what WordPress
+      // does; picking one of them silently would drop half the archive.
+      const items = taxonomy.appliesTo
+        .flatMap((collection) => routedCustom[collection] ?? [])
+        .filter((entry) =>
+          (entry.data.terms?.[taxonomy.name] ?? []).includes(term.slug),
+        )
+        .sort(
+          (left, right) =>
+            (right.data.publishedAt ?? "").localeCompare(
+              left.data.publishedAt ?? "",
+            ) || left.data.slug.localeCompare(right.data.slug),
+        );
+
+      const base = termPath(
+        taxonomy,
+        term.slug,
+        ancestors.map((one) => one.slug),
+      );
+      const first = paginate(items, {
+        page: 1,
+        pageSize: permalinks.postsPerPage,
+      });
+      for (let number = 1; number <= first.pageCount; number += 1)
+        routes.push({
+          kind: "taxonomy-archive",
+          path: paginatedPath(base, number),
+          base: paginatedPath(base, 1),
+          title:
+            term.name[locale] ?? term.name[defaultLocaleOf(term)] ?? term.slug,
+          page: paginate(items, {
+            page: number,
+            pageSize: permalinks.postsPerPage,
+          }),
+          taxonomy,
+          term,
+          ancestors,
+          collections: taxonomy.appliesTo,
+        });
+    }
+  }
+
   // Two routes, one path: the collision every static host resolves silently
   // by serving one of them.
   const claimed = new Map<string, SiteRoute<Post, Page, Custom>>();
@@ -517,6 +689,8 @@ export function resolveSiteRoutes<
     tagOf: (slug) => tagsBySlug.get(slug),
     custom: routedCustom,
     postTypes,
+    taxonomies,
+    terms: routedTerms,
   };
 }
 

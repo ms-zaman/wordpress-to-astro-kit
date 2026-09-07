@@ -58,6 +58,7 @@ for a build the run never loaded. So a busy port is a fatal, named error, and
 | [`content-reconcile/`](content-reconcile/)     | Does your page SAY what the source page says, and is anything on it invented?                                                                 |
 | [`content-integrity/`](content-integrity/)     | Did every entry in `content/` cross the build boundary, and can every emitted page name the content behind it?                                |
 | [`custom-types/`](custom-types/)               | What the kit can and cannot do with a WordPress custom post type — the capability boundary, stated                                            |
+| [`taxonomies/`](taxonomies/)                   | What the kit can and cannot do with a WordPress taxonomy — measured against core, stated as a boundary                                        |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |

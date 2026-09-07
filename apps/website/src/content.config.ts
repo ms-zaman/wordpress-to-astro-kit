@@ -7,6 +7,7 @@ import { file, glob } from "astro/loaders";
 
 import { migration } from "../../../migration.config.ts";
 import { customTypeSchema } from "./content-model/custom-type.ts";
+import { taxonomyTermSchema } from "./content-model/taxonomy-term.ts";
 import { navigationSchema } from "./content-model/navigation.ts";
 import { pageSchema } from "./content-model/page.ts";
 import { postSchema } from "./content-model/post.ts";
@@ -140,8 +141,27 @@ const customTypeCollections = Object.fromEntries(
   ]),
 );
 
+/**
+ * One registry per configured taxonomy: `content/<collection>.json`.
+ *
+ * A `file()` loader rather than a `glob()`, matching `categories.json` and
+ * `tags.json` — a term is a row, not a document. Every profile gets one
+ * whether or not it is published: a stored-only taxonomy's terms are still
+ * content, still validated, and still named in the manifest.
+ */
+const taxonomyCollections = Object.fromEntries(
+  migration.taxonomies.map((profile) => [
+    profile.collection,
+    defineCollection({
+      loader: file(`${CONTENT}/${profile.collection}.json`),
+      schema: taxonomyTermSchema,
+    }),
+  ]),
+);
+
 export const collections = {
   ...customTypeCollections,
+  ...taxonomyCollections,
   pages,
   posts,
   authors,

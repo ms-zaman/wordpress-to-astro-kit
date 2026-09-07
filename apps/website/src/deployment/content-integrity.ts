@@ -78,7 +78,15 @@ export type ExclusionReason =
    * is not withheld — it is unconfigured, and `content:capture census` reports
    * that separately, because nobody has decided anything about it yet.
    */
-  | "type-not-published";
+  | "type-not-published"
+  /**
+   * The term belongs to a taxonomy whose profile says `published: false`.
+   *
+   * A stored-only taxonomy: its terms are captured, validated, filed on
+   * entries and printed as text, and no archive is published for them. Named
+   * so the difference between "stored on purpose" and "lost" is visible.
+   */
+  | "taxonomy-not-published";
 
 export interface Exclusion {
   readonly id: ContentId;
@@ -351,6 +359,38 @@ export function unpublishedTypeExclusions(
         `published: false. Its entries are captured, validated and named here, ` +
         `and no page is produced for them. Set published: true to publish the ` +
         `type, or delete the profile if the type should not be migrated at all.`,
+    });
+  }
+  return excluded;
+}
+
+/**
+ * Terms of a taxonomy whose profile stores rather than routes them.
+ *
+ * Same shape as the withheld-type rule and for the same reason: derived from
+ * the profile, and still naming every term it covers.
+ */
+export function unpublishedTaxonomyExclusions(
+  intended: readonly IntendedContent[],
+  withheldCollections: readonly { name: string; taxonomy: string }[],
+): Exclusion[] {
+  const byCollection = new Map(
+    withheldCollections.map((one) => [one.name, one.taxonomy]),
+  );
+  const excluded: Exclusion[] = [];
+  for (const intent of intended) {
+    const collection = kindOf(intent.id);
+    if (collection === undefined) continue;
+    const taxonomy = byCollection.get(collection);
+    if (taxonomy === undefined) continue;
+    excluded.push({
+      id: intent.id,
+      reason: "taxonomy-not-published",
+      detail:
+        `taxonomy "${taxonomy}" has a profile in migration.config.ts with ` +
+        `published: false. Its terms are stored on entries and rendered as ` +
+        `text; no term archive is published. Set published: true to route ` +
+        `them, or delete the profile if the taxonomy should not be migrated.`,
     });
   }
   return excluded;

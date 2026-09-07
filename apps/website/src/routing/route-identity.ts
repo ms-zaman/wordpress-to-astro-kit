@@ -96,6 +96,12 @@ export function identityOf<
       );
     case "custom-archive":
       return customArchiveIdentity(route.profile.collection);
+    case "taxonomy-archive":
+      // A registry row, like a category: `product-categories/laptops`. The
+      // taxonomy's own collection is the namespace, which is what keeps the
+      // same slug in two taxonomies apart — WordPress allows that duplicate
+      // and this identity has to survive it.
+      return rowId(route.taxonomy.collection, route.term.slug);
     case "archive":
       return archiveIdentity(route);
   }

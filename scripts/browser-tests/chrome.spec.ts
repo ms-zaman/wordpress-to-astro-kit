@@ -394,3 +394,114 @@ test.describe("a custom post type reaches a reader", () => {
     expect(paths.length, "and there are some to check").toBeGreaterThan(0);
   });
 });
+
+test.describe("custom taxonomy archives reach a reader", () => {
+  // The route the resolver computed has to be the route the browser is served.
+  // Everything else here reads a manifest; this navigates.
+  //
+  // Depends on: the `product_cat` (hierarchical URLs) and `product_tag` (flat)
+  // fixture profiles, and the four category terms in
+  // content/product-categories.json.
+  test("A ROOT TERM ARCHIVE LOADS AT ITS CONFIGURED PREFIX", async ({
+    page,
+  }) => {
+    await page.goto("/product-category/electronics/");
+    expect(new URL(page.url()).pathname).toBe("/product-category/electronics/");
+    await expect(page.locator("h1")).toContainText("Electronics");
+  });
+
+  test("A CHILD TERM'S URL CARRIES ITS ANCESTOR", async ({ page }) => {
+    // `urlHierarchy: true` — WordPress's `rewrite['hierarchical']`. The
+    // ancestor is in the path because the profile says so, not because the
+    // term has a parent.
+    await page.goto("/product-category/electronics/laptops/");
+    expect(new URL(page.url()).pathname).toBe(
+      "/product-category/electronics/laptops/",
+    );
+    await expect(page.locator("h1")).toContainText("Laptops");
+    // The breadcrumb is the resolver's ancestor chain, not a split on "/".
+    await expect(
+      page.getByRole("link", { name: "Electronics" }).first(),
+    ).toBeVisible();
+    // And the entry filed under it is listed.
+    await expect(
+      page.getByRole("link", { name: "The Analyser" }),
+    ).toBeVisible();
+  });
+
+  test("SIBLING BRANCHES DO NOT COLLIDE", async ({ page }) => {
+    // Two children, two parents, two paths. WordPress makes the slugs distinct
+    // (wp_unique_term_slug); what has to hold here is that the PATHS are.
+    await page.goto("/product-category/furniture/laptop-stands/");
+    expect(new URL(page.url()).pathname).toBe(
+      "/product-category/furniture/laptop-stands/",
+    );
+    await expect(page.locator("h1")).toContainText("Laptop stands");
+    await expect(
+      page.getByRole("link", { name: "The Collator" }),
+    ).toBeVisible();
+  });
+
+  test("A FLAT TAXONOMY'S TERM HAS NO ANCESTOR IN ITS URL", async ({
+    page,
+  }) => {
+    await page.goto("/product-tag/featured/");
+    expect(new URL(page.url()).pathname).toBe("/product-tag/featured/");
+    await expect(page.locator("h1")).toContainText("Featured");
+  });
+
+  test("ONE SLUG IN TWO TAXONOMIES IS TWO PAGES", async ({ page, request }) => {
+    // WordPress has allowed this since 4.1, so the kit has to survive it. Both
+    // must exist, at different URLs, with different identities and — because
+    // `seo:audit` failed on the duplicate — different titles.
+    await page.goto("/product-category/electronics/laptops/");
+    const categoryTitle = await page.title();
+    await page.goto("/product-tag/laptops/");
+    const tagTitle = await page.title();
+    expect(categoryTitle).not.toBe(tagTitle);
+
+    const manifest = await (await request.get("/deployment.json")).json();
+    const identities = manifest.routes.inventory
+      .filter((entry: { path: string }) => entry.path.endsWith("/laptops"))
+      .map((entry: { entry?: string }) => entry.entry);
+    expect(identities).toContain("product-categories/laptops");
+    expect(identities).toContain("product-tags/laptops");
+  });
+
+  test("a product links to nothing the build did not publish", async ({
+    page,
+  }) => {
+    // The entry page prints its terms as text, deliberately: the kit publishes
+    // term archives only for CONFIGURED taxonomies, and a link to an archive
+    // that does not exist is worse than no link.
+    await page.goto("/products/analyser/");
+    const hrefs = await page
+      .locator("main a")
+      .evaluateAll((links) =>
+        links.map((link) => (link as HTMLAnchorElement).getAttribute("href")),
+      );
+    for (const href of hrefs)
+      expect(
+        href?.startsWith("/product-category/") ||
+          href?.startsWith("/product-tag/"),
+        `${href} — the entry template links no term archives`,
+      ).toBeFalsy();
+  });
+
+  test("every taxonomy route is unique and claimed", async ({ request }) => {
+    const manifest = await (await request.get("/deployment.json")).json();
+    const rows = manifest.routes.inventory.filter(
+      (entry: { origin: string }) => entry.origin === "taxonomy-archive",
+    );
+    expect(rows.length, "there are term archives to check").toBeGreaterThan(0);
+    const paths = rows.map((entry: { path: string }) => entry.path);
+    expect(new Set(paths).size, "no duplicate output").toBe(paths.length);
+    for (const row of rows)
+      expect(
+        manifest.content.intended.some(
+          (intent: { id: string }) => intent.id === row.entry,
+        ),
+        `${row.entry} is intended`,
+      ).toBe(true);
+  });
+});

@@ -93,6 +93,92 @@ export interface RoutePair {
 }
 
 /**
+ * How a WordPress taxonomy is published by this build.
+ *
+ * ## What was measured, and why this cannot be inferred
+ *
+ * Four facts, read off WordPress core and confirmed against a live install
+ * (2026-09-08). Every one of them rules out a guess the kit might have made:
+ *
+ * 1. **REST does not expose the rewrite.** `wp/v2/taxonomies` returns `name`,
+ *    `slug`, `description`, `types`, `hierarchical`, `rest_base` and
+ *    `rest_namespace` — and nothing about the URL. Measured on a live site as
+ *    well as in `class-wp-rest-taxonomies-controller.php`.
+ *
+ * 2. **The taxonomy name is not the URL base.** Measured: the taxonomy
+ *    `doc_category` publishes terms at `/docs-category/<slug>/`. Deriving one
+ *    from the other would have produced a URL the site never served.
+ *
+ * 3. **A hierarchical taxonomy does not imply hierarchical URLs.**
+ *    `get_term_link()` includes ancestor slugs only when
+ *    `rewrite['hierarchical']` is true, which `register_taxonomy` sets
+ *    independently of `hierarchical`. Two flags, two questions.
+ *
+ * 4. **A term slug is unique within its taxonomy.** `wp_unique_term_slug()`
+ *    appends a parent suffix or a number when a slug already exists in the
+ *    same taxonomy; duplicates across DIFFERENT taxonomies have been allowed
+ *    since WordPress 4.1. So `(taxonomy, slug)` identifies a term, and two
+ *    children of different parents cannot both be `laptops`.
+ *
+ * A term's `link` field IS exposed, so a capture can CHECK a profile against
+ * the URL the source site really serves — configuration that is verifiable
+ * rather than merely declared.
+ */
+export interface TaxonomyProfile {
+  /** The WordPress taxonomy key: `product_cat`. */
+  readonly name: string;
+  /**
+   * The human label — `wp/v2/taxonomies` reports it as `name`.
+   *
+   * Not decoration. WordPress allows the same term name in two taxonomies, and
+   * measured on this kit's own fixtures that produced two pages titled
+   * "Laptops – Example Site" — a duplicate-title defect `seo:audit` failed on.
+   * The label is what tells them apart in a title.
+   */
+  readonly label: string;
+  /** The registry file: `content/<collection>.json`. */
+  readonly collection: string;
+  /** The REST route segment, which is not always the taxonomy name. */
+  readonly restBase: string;
+  /**
+   * The post-type COLLECTIONS whose entries this taxonomy files.
+   *
+   * A list, because WordPress attaches one taxonomy to any number of types —
+   * measured on a live install, two taxonomies shared one custom type and one
+   * custom type had two of its own. Naming the collections rather than the
+   * WordPress type keys keeps this in step with the rest of the kit, and every
+   * name must belong to a published profile or the build fails.
+   */
+  readonly appliesTo: readonly string[];
+  /**
+   * False for a taxonomy whose terms are stored on entries and never routed.
+   *
+   * Not the same as omitting the profile: a stored-only taxonomy is known, its
+   * terms are validated and named, and `content:integrity` reports them.
+   */
+  readonly published: boolean;
+  /**
+   * The URL pattern, in WordPress's permalink syntax.
+   *
+   * `%term%` is the only token, because it is the only one `get_term_link()`
+   * expands. The literal prefix is the `rewrite['slug']` REST does not report,
+   * so it is written here and checked against a captured term's `link`.
+   */
+  readonly permalink: string;
+  /**
+   * Whether the URL carries the term's ancestors — `rewrite['hierarchical']`.
+   *
+   * SEPARATE from `hierarchical` on purpose, because WordPress separates them:
+   * a hierarchical taxonomy with `rewrite.hierarchical` false publishes
+   * `/product-category/laptops/`, not `/product-category/electronics/laptops/`.
+   * Getting this wrong publishes URLs the source never had.
+   */
+  readonly urlHierarchy: boolean;
+  /** Whether terms have parents at all — the DATA shape, not the URL shape. */
+  readonly hierarchical: boolean;
+}
+
+/**
  * How a WordPress post type is published by this build.
  *
  * ## Why a profile and not a heuristic
@@ -261,6 +347,15 @@ export interface MigrationConfig {
    * unconfigured — that is a decision waiting, not a gap in the tooling.
    */
   readonly postTypes: readonly PostTypeProfile[];
+  /**
+   * Taxonomies this build publishes or stores, one profile each.
+   *
+   * `category` and `post_tag` are NOT here: the kit models WordPress's two core
+   * taxonomies directly, through `content/categories.json` and
+   * `content/tags.json` and the `permalinks.category` / `permalinks.tag`
+   * patterns. This list is for everything else.
+   */
+  readonly taxonomies: readonly TaxonomyProfile[];
 }
 
 export const migration: MigrationConfig = {
@@ -327,6 +422,42 @@ export const migration: MigrationConfig = {
       published: false,
       archive: { kind: "none" },
       taxonomies: { attached: [], archives: false },
+    },
+  ],
+  // Two taxonomy fixtures on the `product` type, for the same reason the type
+  // fixtures exist: the paths they exercise have to run in the kit's own
+  // ladder, not only in a unit test. Both are synthetic.
+  //
+  // `product-category` is hierarchical in BOTH senses — its terms have parents
+  // and its URLs carry them — which is the case a flat model gets wrong.
+  // `product-tag` is neither, which is the case a hierarchical model gets
+  // wrong by assuming.
+  taxonomies: [
+    {
+      name: "product_cat",
+      label: "Product category",
+      collection: "product-categories",
+      restBase: "product_cat",
+      appliesTo: ["products"],
+      published: true,
+      // The literal prefix differs from the taxonomy name deliberately: that is
+      // what a real install does, measured — `doc_category` serves terms at
+      // `/docs-category/`. A kit that derived one from the other would publish
+      // URLs the source never had.
+      permalink: "/product-category/%term%/",
+      urlHierarchy: true,
+      hierarchical: true,
+    },
+    {
+      name: "product_tag",
+      label: "Product tag",
+      collection: "product-tags",
+      restBase: "product_tag",
+      appliesTo: ["products"],
+      published: true,
+      permalink: "/product-tag/%term%/",
+      urlHierarchy: false,
+      hierarchical: false,
     },
   ],
 };

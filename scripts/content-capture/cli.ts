@@ -24,7 +24,12 @@ import {
 } from "../site-map-audit/fetch.ts";
 import { capturePostType, writeCapture } from "./capture.ts";
 import { WordPressRest } from "./rest.ts";
-import { classifyTypes, ofCapability } from "../custom-types/capability.ts";
+import {
+  classifyTaxonomies,
+  classifyTypes,
+  ofCapability,
+  taxonomiesOfCapability,
+} from "../custom-types/capability.ts";
 import { migration } from "../../migration.config.ts";
 import { parseArgs } from "../lib/args.ts";
 
@@ -175,6 +180,65 @@ if (command === "census") {
         "      taxonomies: { attached: [], archives: false } }\n\n" +
         "  …or decide it should not be migrated, and record that decision where\n" +
         "  your project records decisions.\n",
+    );
+  }
+
+  // Taxonomies get the same five-way answer, and for the same reason: REST
+  // reports that `product_cat` exists and says nothing about whether its terms
+  // should be public URLs. Measured — `wp/v2/taxonomies` carries no rewrite at
+  // all, so the prefix and the hierarchy flag can only come from a profile.
+  const taxonomyRows = classifyTaxonomies(
+    taxonomies,
+    migration.taxonomies,
+    migration.postTypes,
+  );
+  const unconfiguredTaxonomies = taxonomiesOfCapability(
+    taxonomyRows,
+    "unconfigured",
+  );
+
+  process.stdout.write("\n  TAXONOMY CAPABILITY\n");
+  for (const row of taxonomyRows) {
+    if (row.capability === "internal") continue;
+    const label =
+      row.capability === "core"
+        ? "core            "
+        : row.capability === "configured"
+          ? "configured      "
+          : row.capability === "withheld"
+            ? "stored only     "
+            : "UNCONFIGURED    ";
+    process.stdout.write(
+      `  ${label}${row.taxonomy.name.padEnd(24)}` +
+        `${row.taxonomy.hierarchical ? "hierarchical" : "flat        "} ` +
+        `on ${row.taxonomy.types.join(", ")}\n`,
+    );
+    if (row.unroutableTypes.length > 0)
+      process.stdout.write(
+        `                  ⚠ attached to ${row.unroutableTypes.join(", ")}, ` +
+          "which no profile publishes — its archives would be empty\n",
+      );
+  }
+
+  if (unconfiguredTaxonomies.length > 0) {
+    const first = unconfiguredTaxonomies[0]!.taxonomy;
+    process.stdout.write(
+      `\n  ${unconfiguredTaxonomies.length} taxonom${unconfiguredTaxonomies.length === 1 ? "y has" : "ies have"} no profile: ` +
+        `${unconfiguredTaxonomies.map((row) => row.taxonomy.name).join(", ")}.\n\n` +
+        "  Their terms are not routed. This is a DECISION WAITING — REST reports\n" +
+        "  that a taxonomy exists and nothing about its URLs: measured, it carries\n" +
+        "  no `rewrite`, and a taxonomy's name is not its URL base (a live install\n" +
+        "  serves `doc_category` terms at /docs-category/). Open a term archive on\n" +
+        "  the source site, read the prefix off the address bar, and write it in:\n\n" +
+        `    { name: "${first.name}",\n` +
+        `      collection: "${first.name.replace(/_/g, "-")}",\n` +
+        `      restBase: "${first.restBase}",\n` +
+        '      appliesTo: ["<post-type collection>"],\n' +
+        "      published: true,\n" +
+        `      permalink: "/<prefix from the address bar>/%term%/",\n` +
+        `      urlHierarchy: ${first.hierarchical ? "<does the URL show ancestors?>" : "false"},\n` +
+        `      hierarchical: ${first.hierarchical} }\n\n` +
+        "  A captured term's `link` field is the evidence to check it against.\n",
     );
   }
 

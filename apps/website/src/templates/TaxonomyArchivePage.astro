@@ -1,0 +1,136 @@
+---
+// One term of a custom taxonomy, and the entries filed under it.
+//
+// Its own template rather than a case inside the custom-type listing, because
+// the two answer different questions: that one lists a whole collection, this
+// lists what one term files — possibly drawn from several collections, and
+// possibly under a chain of ancestors that the URL carries.
+//
+// The breadcrumb trail is the ancestor chain the RESOLVER computed, never a
+// path split on `/`. A URL is an output of the term hierarchy; reading it back
+// to recover that hierarchy would be guessing at something already known.
+import { Heading, Section, Text } from "@wpk/ui";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Breadcrumbs from "../components/layout/Breadcrumbs.astro";
+import PaginationNav from "../components/content/PaginationNav.astro";
+import PostList, { type PostCard } from "../components/content/PostList.astro";
+import { trailCrumbs } from "../content-index/wayfinding.ts";
+import { termDescription } from "../rendering/archive-description.ts";
+import { META_DESCRIPTION_MAX } from "../rendering/head-model.ts";
+import { truncateAtWord } from "../rendering/portable-body.ts";
+import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
+import { SITE_NAME } from "../rendering/site-identity.ts";
+import { customTypePath, termPath } from "../routing/permalink.ts";
+import type { TaxonomyArchiveRoute } from "../routing/resolver.ts";
+import type { CustomEntry, SiteData } from "../routing/site-routes.ts";
+
+interface Props {
+  route: TaxonomyArchiveRoute<CustomEntry>;
+  site: SiteData;
+}
+
+const { route, site } = Astro.props;
+const { page, taxonomy, term, ancestors } = route;
+
+const nameOf = (row: { name: Readonly<Partial<Record<string, string>>> }) =>
+  row.name[site.locale] ?? Object.values(row.name)[0];
+
+// Each ancestor links to its own archive, built from the chain above it — the
+// same computation the resolver used, so a crumb can never point somewhere the
+// build did not publish.
+const crumbs = trailCrumbs(
+  ancestors.map((ancestor, index) => ({
+    label: nameOf(ancestor) ?? ancestor.slug,
+    href: termPath(
+      taxonomy,
+      ancestor.slug,
+      ancestors.slice(0, index).map((one) => one.slug),
+    ),
+  })),
+  route.title,
+);
+
+// An entry can be filed under a term from any of the collections the taxonomy
+// applies to, so the card's link is built from the entry's OWN profile rather
+// than from the taxonomy's first collection.
+//
+// Matched by SLUG, not by object identity. `getStaticPaths` hands the route in
+// as a prop and this file reads the collections again, and the two are not the
+// same objects — Astro serialises props across that boundary. An `includes()`
+// on the entry object silently found nothing, and every term archive rendered
+// its empty state with the entries sitting right there in `page.items`.
+const collectionsHere = route.collections.filter((collection) =>
+  site.postTypes.some((profile) => profile.collection === collection),
+);
+const profileFor = (entry: CustomEntry) => {
+  const home = collectionsHere.find((collection) =>
+    (site.custom[collection] ?? []).some(
+      (candidate) =>
+        candidate.data.slug === entry.data.slug &&
+        candidate.data.locale === entry.data.locale,
+    ),
+  );
+  return site.postTypes.find((profile) => profile.collection === home);
+};
+
+const cards: PostCard[] = page.items.flatMap((entry) => {
+  const profile = profileFor(entry);
+  if (profile === undefined) return [];
+  return [
+    {
+      href: customTypePath(profile, entry.data),
+      title: entry.data.title,
+      publishedAt: entry.data.publishedAt ?? entry.data.updatedAt,
+    },
+  ];
+});
+
+const summary =
+  term.description?.[site.locale] ?? Object.values(term.description ?? {})[0];
+
+// The taxonomy label qualifies the title. WordPress allows one term name in
+// two taxonomies, and without this the kit's own fixtures produced two pages
+// titled "Laptops – Example Site" — a duplicate `seo:audit` failed on.
+const heading = `${route.title} – ${taxonomy.label}`;
+
+const seo = seoMetadata(
+  {
+    title:
+      page.page === 1
+        ? `${heading} – ${SITE_NAME}`
+        : `${heading}, page ${page.page} – ${SITE_NAME}`,
+    description: truncateAtWord(
+      termDescription(summary, {
+        title: route.title,
+        siteName: SITE_NAME,
+        taxonomyLabel: taxonomy.label,
+      }),
+      META_DESCRIPTION_MAX,
+    ),
+  },
+  findOverride(site.overrides, route.path, site.locale),
+);
+---
+
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonical={seo.canonical}
+  ogImage={seo.ogImage}
+  lang={site.locale}
+  crumbs={crumbs}
+>
+  <Section gap="sm">
+    <Breadcrumbs crumbs={crumbs} />
+    <Heading as="h1" size="xl">{route.title}</Heading>
+    {summary && <Text tone="muted">{summary}</Text>}
+    <PostList
+      posts={cards}
+      locale={site.locale}
+      headingAs="h2"
+      emptyMessage={`Nothing is filed under ${route.title} yet.`}
+    />
+    <PaginationNav base={route.base} page={page} />
+  </Section>
+</BaseLayout>

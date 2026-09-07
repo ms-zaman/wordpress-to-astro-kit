@@ -64,12 +64,17 @@ export function entryId(
   return `${collection}/${slug}@${locale}`;
 }
 
-/** `categories/news` — a registry row, which carries every language itself. */
-export function rowId(
-  kind: "categories" | "tags" | "authors",
-  slug: string,
-): ContentId {
-  return `${kind}/${slug}`;
+/**
+ * `categories/news` — a registry row, which carries every language itself.
+ *
+ * `collection` is open rather than the three core registries, because a custom
+ * taxonomy's terms are registry rows in a registry the configuration names.
+ * The collection is also what keeps two taxonomies' identical slugs apart:
+ * WordPress allows the same slug in different taxonomies, so `laptops` can be
+ * both `product-categories/laptops` and `product-tags/laptops`.
+ */
+export function rowId(collection: string, slug: string): ContentId {
+  return `${collection}/${slug}`;
 }
 
 /** The collection an identity belongs to, for grouping a report. */

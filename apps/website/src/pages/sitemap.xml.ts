@@ -35,7 +35,9 @@ export const GET: APIRoute = async () => {
       // and claiming one entry's date for the listing is a lie a crawler acts
       // on. Both listing kinds behave the same way.
       lastModified:
-        route.kind === "archive" || route.kind === "custom-archive"
+        route.kind === "archive" ||
+        route.kind === "custom-archive" ||
+        route.kind === "taxonomy-archive"
           ? undefined
           : route.entry.data.updatedAt,
     })),

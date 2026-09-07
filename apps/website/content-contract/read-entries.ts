@@ -92,6 +92,50 @@ const ENTRY_SETS: readonly EntrySetSource[] = [
  * So the FILESYSTEM is the authority here. This walks `content/` and reports
  * any directory holding entry files that no set in `ENTRY_SETS` claims.
  */
+/**
+ * Registry files at the content root that no collection claims.
+ *
+ * The same hole as `unclaimedEntryDirectories`, in the shape the taxonomy
+ * model uses: a custom taxonomy's terms live in `content/<collection>.json`,
+ * a FILE, and a directory walk cannot see one. Delete a taxonomy profile and
+ * its registry stays behind — nothing loads it, so its terms never reach the
+ * intended inventory, so `content:integrity` reports nothing.
+ *
+ * Measured: renaming one taxonomy's collection left four terms orphaned and
+ * the whole ladder green, exactly as removing a post-type profile once did.
+ */
+export function unclaimedRegistryFiles(contentRoot: string): ValidationIssue[] {
+  const claimed = new Set([
+    // The kit's own registries and data files.
+    "authors.json",
+    "categories.json",
+    "tags.json",
+    "redirects.json",
+    ...migration.taxonomies.map((profile) => `${profile.collection}.json`),
+  ]);
+  const unclaimed: ValidationIssue[] = [];
+  let names: string[];
+  try {
+    names = readdirSync(contentRoot);
+  } catch {
+    return [];
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json") || claimed.has(name)) continue;
+    const file = path.join(contentRoot, name);
+    if (!statSync(file).isFile()) continue;
+    unclaimed.push({
+      code: "registry-file-unclaimed",
+      message:
+        `content/${name} is a registry no collection claims. Nothing loads it, ` +
+        `so nothing can report its rows missing either — not the build, not the ` +
+        `manifest, not content:integrity. Add a profile for it to ` +
+        `\`taxonomies\` in migration.config.ts, or delete the file.`,
+    });
+  }
+  return unclaimed;
+}
+
 export function unclaimedEntryDirectories(
   contentRoot: string,
 ): ValidationIssue[] {
@@ -340,6 +384,7 @@ export function validateContentTree(
 
   const issues = [
     ...unclaimedEntryDirectories(contentRoot),
+    ...unclaimedRegistryFiles(contentRoot),
     ...validateClusters(entries),
     ...validatePageParents(
       entries

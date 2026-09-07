@@ -9,6 +9,7 @@ import {
   migration,
   type Permalinks,
   type PostTypeProfile,
+  type TaxonomyProfile,
 } from "../../../../migration.config.ts";
 import { routeKey, sitePath } from "./url-shape.ts";
 
@@ -285,6 +286,149 @@ export function customTypeArchivePath(profile: PostTypeProfile): string {
       `postTypes["${profile.name}"] has no archive, so it has no archive path.`,
     );
   return sitePath(profile.archive.path);
+}
+
+/**
+ * The tokens a TAXONOMY pattern may use.
+ *
+ * One, because `get_term_link()` expands one: the permastruct is
+ * `<base>/%<taxonomy>%`, and the token becomes either the term's slug or its
+ * ancestor path joined with `/`. Which of those is `urlHierarchy`, not another
+ * token — a `%parent%` token would be a shape WordPress has no equivalent for,
+ * and inventing it would let a profile describe a URL the source never served.
+ */
+export const TAXONOMY_TOKENS: readonly string[] = ["term"];
+
+/** Everything wrong with one taxonomy profile. */
+export function taxonomyProblems(profile: TaxonomyProfile): string[] {
+  const problems: string[] = [];
+  const where = `taxonomies["${profile.name}"]`;
+
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(profile.collection))
+    problems.push(
+      `${where}.collection must be a lowercase registry name: got "${profile.collection}"`,
+    );
+  if (!profile.permalink.startsWith("/"))
+    problems.push(
+      `${where}.permalink must start with "/": got "${profile.permalink}"`,
+    );
+
+  const tokens = [...profile.permalink.matchAll(TOKEN)].map(
+    (match) => match[1] ?? "",
+  );
+  for (const token of tokens)
+    if (!TAXONOMY_TOKENS.includes(token))
+      problems.push(
+        `${where}.permalink uses %${token}%, which is not a taxonomy token. ` +
+          `Supported: ${TAXONOMY_TOKENS.map((one) => `%${one}%`).join(", ")}. ` +
+          (token === "parent"
+            ? "Ancestors are not a token — set `urlHierarchy: true` and %term% " +
+              "expands to the ancestor path, which is what get_term_link() does."
+            : "WordPress's own term permastruct expands exactly one token."),
+      );
+  if (!tokens.includes("term"))
+    problems.push(
+      `${where}.permalink has no %term%, so every term would share one URL`,
+    );
+
+  if (profile.urlHierarchy && !profile.hierarchical)
+    problems.push(
+      `${where} sets urlHierarchy without hierarchical. A term with no parent ` +
+        `has no ancestor path, so the URL shape describes a hierarchy the data ` +
+        `does not have.`,
+    );
+
+  if (profile.appliesTo.length === 0)
+    problems.push(
+      `${where}.appliesTo is empty, so its terms file nothing and every archive ` +
+        `would be blank. Name the post-type collection(s) it applies to.`,
+    );
+
+  return problems;
+}
+
+/**
+ * Every taxonomy profile's problems, plus the ones only visible across profiles.
+ *
+ * `postTypes` is passed rather than read, so the checks run in the same call
+ * that validates them and a test can state both halves.
+ */
+export function taxonomyProfileProblems(
+  taxonomies: readonly TaxonomyProfile[] = migration.taxonomies,
+  postTypes: readonly PostTypeProfile[] = migration.postTypes,
+): string[] {
+  const problems: string[] = [];
+  const seenNames = new Set<string>();
+  const seenCollections = new Map<string, string>();
+  const published = new Map(
+    postTypes
+      .filter((one) => one.published)
+      .map((one) => [one.collection, one]),
+  );
+  const known = new Set(postTypes.map((one) => one.collection));
+
+  for (const profile of taxonomies) {
+    if (seenNames.has(profile.name))
+      problems.push(`taxonomies declares "${profile.name}" more than once`);
+    seenNames.add(profile.name);
+
+    const owner = seenCollections.get(profile.collection);
+    if (owner !== undefined)
+      problems.push(
+        `taxonomies["${profile.name}"] and taxonomies["${owner}"] both use ` +
+          `collection "${profile.collection}". One registry cannot hold two ` +
+          `taxonomies: a term in it would have two identities.`,
+      );
+    seenCollections.set(profile.collection, profile.name);
+
+    if (CORE_TAXONOMIES.has(profile.name))
+      problems.push(
+        `taxonomies["${profile.name}"] is one of WordPress's core taxonomies, ` +
+          `which this kit models directly through content/categories.json, ` +
+          `content/tags.json and permalinks.category / permalinks.tag. Remove ` +
+          `the profile and configure the pattern there.`,
+      );
+
+    // A taxonomy that files entries of a type nobody publishes produces an
+    // archive of nothing, pointing at pages that do not exist.
+    for (const collection of profile.appliesTo) {
+      if (!known.has(collection))
+        problems.push(
+          `taxonomies["${profile.name}"].appliesTo names "${collection}", which ` +
+            `is not a postTypes collection. Name the collection, not the ` +
+            `WordPress type key.`,
+        );
+      else if (profile.published && !published.has(collection))
+        problems.push(
+          `taxonomies["${profile.name}"] is published and files "${collection}", ` +
+            `whose post type is not. Its archives would list pages that do not ` +
+            `exist. Publish the type, or set the taxonomy to stored-only.`,
+        );
+    }
+
+    problems.push(...taxonomyProblems(profile));
+  }
+  return problems;
+}
+
+/** WordPress's own two, which the kit models without a profile. */
+const CORE_TAXONOMIES = new Set(["category", "post_tag"]);
+
+/**
+ * The URL one term is published at.
+ *
+ * `ancestorSlugs` is the chain from the outermost ancestor down to the term's
+ * own parent, and it is used only when the profile says the URL carries it —
+ * exactly the branch `get_term_link()` takes on `rewrite['hierarchical']`.
+ */
+export function termPath(
+  profile: TaxonomyProfile,
+  slug: string,
+  ancestorSlugs: readonly string[] = [],
+): string {
+  return expandPattern(profile.permalink, {
+    term: profile.urlHierarchy ? [...ancestorSlugs, slug].join("/") : slug,
+  });
 }
 
 /** Where the posts listing lives. */
