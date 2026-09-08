@@ -66,14 +66,14 @@ A root-relative path needs no host and is always the site's own.
 
 ## One authority, and what it replaced
 
-`identifyAsset` is the only answer to *"is this URL a migratable or local asset,
-and which asset is it?"* Three places used to answer it independently:
+`identifyAsset` is the only answer to _"is this URL a migratable or local asset,
+and which asset is it?"_ Three places used to answer it independently:
 
-| | its rule | what it got wrong |
-| --- | --- | --- |
-| `content-model/shared.ts` (`mediaRef`) | its own `^(?:<liveOrigin>)?/wp-content/uploads/[^?#]+$` plus a `url.includes("wp-content/uploads")` substring test | measured across 18 forms, it disagreed with the engine on **11** |
-| `rendering/media.ts` | two regexes built from `liveOrigin` | did not recognise `//host/…` at all |
-| `pages/media-manifest.json.ts` | its own extension allowlist and host parse | assumed every asset is an image or a PDF; skipped custom types and unbuilt locales |
+|                                        | its rule                                                                                                           | what it got wrong                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `content-model/shared.ts` (`mediaRef`) | its own `^(?:<liveOrigin>)?/wp-content/uploads/[^?#]+$` plus a `url.includes("wp-content/uploads")` substring test | measured across 18 forms, it disagreed with the engine on **11**                   |
+| `rendering/media.ts`                   | two regexes built from `liveOrigin`                                                                                | did not recognise `//host/…` at all                                                |
+| `pages/media-manifest.json.ts`         | its own extension allowlist and host parse                                                                         | assumed every asset is an image or a PDF; skipped custom types and unbuilt locales |
 
 Three of the schema's disagreements were live defects:
 
@@ -92,7 +92,7 @@ plus a hard-coded `/wp-content/uploads/` that ignored `media.uploadsPath`, so a
 namespace rule: a media URL in the uploads namespace **on a host
 `migrateFrom` does not list** is refused. That is either your library rewritten
 onto a CDN — a decision `WPK_MEDIA_ORIGIN` owns at build time, not the content
-tree — or somebody else's library stored as this entry's image. A *body* may
+tree — or somebody else's library stored as this entry's image. A _body_ may
 reference another site's uploads freely; `featuredImage`, `avatar` and
 `ogImage` are curated fields.
 
