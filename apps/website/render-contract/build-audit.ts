@@ -156,7 +156,47 @@ const walk = (dir: string): void => {
   }
 };
 walk(dist);
+
 // ---------------------------------------------------------------------------
+// A page the SOURCE asked to keep out of search.
+//
+// The kit's indexing model is deliberately site-wide: `robots` on an override
+// row is read and reported, never applied, because whether a build is
+// indexable is the launch switch's decision. That is a boundary, and a
+// boundary nobody is told about is indistinguishable from a bug.
+//
+// Measured on a real migration: eleven of thirty-three source pages carried
+// `noindex` — thank-you pages, booking pages, seasonal offers — and the
+// migrated build would have published every one of them to search without a
+// word. This says so.
+{
+  const overridesFile = path.join(contentRoot, "seo", "overrides.json");
+  const rows: { path?: string; robots?: { noindex?: boolean } }[] = existsSync(
+    overridesFile,
+  )
+    ? (JSON.parse(readFileSync(overridesFile, "utf8")) as {
+        path?: string;
+        robots?: { noindex?: boolean };
+      }[])
+    : [];
+  const asked = rows.filter((row) => row.robots?.noindex === true);
+  const published = asked.filter((row) => {
+    const directive = robotsDirective(row.path ?? "/", environment);
+    return !directive.toLowerCase().includes("noindex");
+  });
+  check(
+    "no page asks to be out of search while this build indexes it",
+    published.length === 0,
+    `${published.length} of ${asked.length} override row(s) set noindex and this ` +
+      `build publishes them as indexable — ${published
+        .slice(0, 4)
+        .map((row) => row.path)
+        .join(", ")}. Indexing is the launch switch's decision, so this is a ` +
+      `DECISION to take rather than a bug to fix: exclude them from the ` +
+      `migration, or accept that they become indexable.`,
+  );
+}
+
 // Media: no stale source URL where the migration was supposed to move the file.
 //
 // The engine rewrites a reference it OWNS to the path this site serves it at.

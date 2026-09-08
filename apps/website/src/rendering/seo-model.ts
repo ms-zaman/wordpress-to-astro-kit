@@ -76,7 +76,20 @@ export interface SeoMetadata {
   readonly titleFromOverride: boolean;
   readonly descriptionFromOverride: boolean;
   readonly disposition?: string;
-  /** True when the row asks to be indexable and the launch switch overrules it. */
+  /**
+   * True when the row asks for an indexing state the launch switch will not
+   * emit — in EITHER direction.
+   *
+   * It used to fire only when a row asked to be indexed while the switch said
+   * noindex. The other direction is the one a migration actually hits: a
+   * source site marks its thank-you and booking pages `noindex`, and a build
+   * that indexes everything publishes them. Measured on a real migration —
+   * eleven of thirty-three pages were `noindex` at the source and every one of
+   * them would have gone into search.
+   *
+   * Reported, never applied: indexing stays the launch switch's decision, and
+   * `render:build-audit` is what surfaces the disagreement.
+   */
   readonly robotsConflict: boolean;
 }
 
@@ -93,6 +106,6 @@ export function seoMetadata(
     titleFromOverride: override?.metaTitle !== undefined,
     descriptionFromOverride: override?.metaDescription !== undefined,
     disposition: override?.disposition?.state,
-    robotsConflict: override?.robots?.noindex === false,
+    robotsConflict: override?.robots?.noindex !== undefined,
   };
 }
