@@ -60,6 +60,7 @@ const manifest = JSON.parse(read("deployment.json")) as {
   routes: {
     inventory: { path: string; file: string; kind: string; origin: string }[];
   };
+  content?: { intended?: unknown[] };
 };
 const manifestProblems = validateManifest(manifest);
 check(
@@ -70,6 +71,67 @@ check(
 const environment = manifest.build.environment;
 console.log(`  environment: ${environment}`);
 const inventory = manifest.routes.inventory;
+
+// The manifest is a ROUTE, so every field in it is published. It describes this
+// build — identities, collections, locales, type keys — and it must not describe
+// the SOURCE site: the WordPress post, term and user ids each page was migrated
+// from are not information a deployment needs, and nobody asked for them to be
+// public. They stay in `content/`, where they were written, and `pnpm
+// provenance` reads them from there.
+//
+// `validateManifest` already refuses a `source` on any intended row. This is
+// the blunt second pass over the RAW TEXT, because the structural check can
+// only refuse the shapes it knows about, and a leak reintroduced somewhere
+// else in the document — a new field, a nested object, a debugging aid left in
+// — would pass it. Scanning what is actually served costs one regex.
+const manifestText = read("deployment.json");
+const SOURCE_ID_KEYS =
+  /"(sourceId|source_id|wpId|wordpressId|termId|postId)"\s*:/g;
+const leakedKeys = [...manifestText.matchAll(SOURCE_ID_KEYS)].map(
+  (match) => match[1],
+);
+check(
+  "the served manifest names no source-system identifier",
+  leakedKeys.length === 0,
+  `found ${[...new Set(leakedKeys)].join(", ")} in deployment.json — the ids ` +
+    "describe the site this was migrated from and must not be served",
+);
+
+const leakedEntities = (
+  (manifest.content?.intended ?? []) as { id: string; provenance?: unknown }[]
+).filter(
+  (row) =>
+    typeof row.provenance === "object" &&
+    row.provenance !== null &&
+    "source" in row.provenance,
+);
+check(
+  "no intended entity carries a source entity",
+  leakedEntities.length === 0,
+  `${leakedEntities.length} row(s) do, starting with "${leakedEntities[0]?.id}"`,
+);
+
+// And the other half of the same contract: taking the ids out must not have
+// taken anything the deployment needs. Every intended row still states an
+// origin and can still be joined by identity, which is what lets
+// `content:integrity` report a withheld entity BY NAME.
+const intendedRows = (manifest.content?.intended ?? []) as {
+  id?: string;
+  provenance?: { origin?: string };
+}[];
+const unattributed = intendedRows.filter(
+  (row) =>
+    typeof row.id !== "string" ||
+    row.id === "" ||
+    typeof row.provenance?.origin !== "string",
+);
+check(
+  "every intended entity still states an identity and an origin",
+  intendedRows.length > 0 && unattributed.length === 0,
+  intendedRows.length === 0
+    ? "the manifest lists no intended content at all"
+    : `${unattributed.length} row(s) do not`,
+);
 
 // ---------------------------------------------------------------------------
 console.log("\nEvery route was emitted, and nothing else was");

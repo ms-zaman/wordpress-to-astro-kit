@@ -237,6 +237,47 @@ test.describe("lineage — intended entity to browser-visible page", () => {
     expect(withheld!.provenance!.origin).toBeTruthy();
   });
 
+  test("THE SERVED MANIFEST CARRIES NO SOURCE-SITE IDS", async ({
+    request,
+  }) => {
+    // Fetched over HTTP, not read off disk: this is the artifact a host
+    // actually hands to anybody who asks for it. `/deployment.json` describes
+    // THIS build — identities, collections, locales, type keys — and must not
+    // describe the site it was migrated from. The WordPress post, term and
+    // user ids live in `content/`, where whoever migrated the content wrote
+    // them, and `pnpm provenance` reads them from there.
+    const response = await request.get("/deployment.json");
+    expect(response.status()).toBe(200);
+    const text = await response.text();
+
+    for (const forbidden of ["sourceId", "wp:post/", "wp:term/", "wp:user/"])
+      expect(text, `"${forbidden}" is served`).not.toContain(forbidden);
+
+    const served = JSON.parse(text) as {
+      content: { intended: { id: string; provenance?: Provenance }[] };
+      hosting: unknown;
+      build: unknown;
+      routes: unknown;
+    };
+    expect(
+      served.content.intended.filter(
+        (row) => row.provenance !== undefined && "source" in row.provenance,
+      ),
+    ).toEqual([]);
+
+    // And the deployment contract survived the removal: everything a host or a
+    // gate reads is still there, and every entity is still identifiable and
+    // still states an origin.
+    expect(served.build).toBeTruthy();
+    expect(served.routes).toBeTruthy();
+    expect(served.hosting).toBeTruthy();
+    expect(served.content.intended.length).toBeGreaterThan(0);
+    for (const row of served.content.intended) {
+      expect(row.id, "every row is identifiable").toBeTruthy();
+      expect(row.provenance?.origin, `origin on ${row.id}`).toBeTruthy();
+    }
+  });
+
   test("every emitted page in the manifest has a claimant", async ({
     page,
   }) => {

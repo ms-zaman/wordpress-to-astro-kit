@@ -41,8 +41,9 @@ import { kindOf, localeOf, type ContentId } from "./content-identity.ts";
 import { claimOf } from "./route-inventory.ts";
 import {
   contestedSourceEntities,
-  provenanceProblems,
-  type Provenance,
+  publicProvenanceProblems,
+  type PublicProvenance,
+  type SourceClaimant,
 } from "../content-model/provenance.ts";
 
 /**
@@ -129,15 +130,21 @@ export interface IntendedContent {
   /** Where a reader would expect to find it, when that is knowable. */
   readonly expectedRoute?: string;
   /**
-   * Where it came from.
+   * Where it came from, MINUS the source site's primary keys.
    *
-   * REQUIRED, and that is the point: an entity whose origin nothing states is
+   * Required, and that is the point: an entity whose origin nothing states is
    * an entity nobody can trace, re-capture or reconcile, and "we do not know"
    * has to be spelled `origin: "authored"` rather than left blank. A manifest
    * row without one is reported, because JSON cannot be made to carry a
    * TypeScript requirement and a manifest may come from any build.
+   *
+   * `PublicProvenance` and not `Provenance`, because this is the shape that
+   * lands in `dist/deployment.json`, which a host serves. The WordPress ids
+   * live in the internal artifact — see `deployment/provenance-artifact.ts` —
+   * and the type makes putting one here a compile error rather than a review
+   * comment.
    */
-  readonly provenance: Provenance;
+  readonly provenance: PublicProvenance;
 }
 
 /** One page this build actually emitted, as the manifest records it. */
@@ -233,6 +240,21 @@ export interface IntegrityInput {
    * page is absent" is distinguishable from "the route was never resolved".
    */
   readonly filesInDist: ReadonlySet<string>;
+  /**
+   * Full provenance, from the INTERNAL artifact, when the caller has it.
+   *
+   * Optional because the public manifest deliberately does not carry source
+   * entities, so this gate cannot derive them. When it is supplied the
+   * one-source-entity-one-local-entity check runs here as defence in depth;
+   * when it is not, the check simply does not run — and the CLI says so, out
+   * loud, rather than printing zero findings. A gate reporting nothing because
+   * it was given nothing to read is the exact failure this kit keeps finding.
+   *
+   * The AUTHORITATIVE check is upstream either way: the content contract reads
+   * every file from the filesystem, which is the only layer that sees two
+   * entries claiming one WordPress id.
+   */
+  readonly sourceClaims?: readonly SourceClaimant[];
 }
 
 /**
@@ -294,7 +316,7 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
       });
       continue;
     }
-    for (const problem of provenanceProblems(intent.provenance))
+    for (const problem of publicProvenanceProblems(intent.provenance))
       findings.push({
         kind: "PROVENANCE_MISSING",
         subject: intent.id,
@@ -302,11 +324,7 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
       });
   }
 
-  for (const contested of contestedSourceEntities(
-    input.intended
-      .filter((intent) => intent.provenance !== undefined)
-      .map((intent) => ({ provenance: intent.provenance, by: intent.id })),
-  ))
+  for (const contested of contestedSourceEntities(input.sourceClaims ?? []))
     findings.push({
       kind: "PROVENANCE_CONTESTED",
       subject: contested.key,

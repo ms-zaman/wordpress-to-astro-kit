@@ -41,7 +41,7 @@ import {
   type PostEntryData,
   type TaxonomyTermRow,
 } from "../../../apps/website/src/routing/resolver.ts";
-import type { Provenance } from "../../../apps/website/src/content-model/provenance.ts";
+import type { PublicProvenance } from "../../../apps/website/src/content-model/provenance.ts";
 import type {
   PostTypeProfile,
   TaxonomyProfile,
@@ -400,7 +400,7 @@ check("TWO ROUTES NORMALISING TO ONE FILE ARE DETECTED", () => {
 console.log("\nDefence in depth — the gate no longer deduplicates");
 
 /** Provenance for a fixture: enough to be valid, never the thing under test. */
-const authored = (local: string, locale?: string): Provenance => ({
+const authored = (local: string, locale?: string): PublicProvenance => ({
   local,
   origin: "authored",
   collection: local.split("/")[0]!,

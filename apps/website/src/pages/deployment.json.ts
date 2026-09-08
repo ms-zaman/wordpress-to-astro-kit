@@ -23,10 +23,21 @@ import {
   provenanceOfDerived,
   provenanceOfEntity,
   typeVocabulary,
+  withoutSourceEntity,
   type Provenance,
 } from "../content-model/provenance.ts";
 import { migration } from "../../../../migration.config.ts";
-import type { IntendedContent } from "../deployment/content-integrity.ts";
+/**
+ * An intended entity as this module computes it: FULL provenance.
+ *
+ * Not `IntendedContent`, which is the shape the manifest publishes and
+ * therefore carries no source entity. The two diverge exactly once, below.
+ */
+interface IntendedEntity {
+  readonly id: string;
+  readonly expectedRoute?: string;
+  readonly provenance: Provenance;
+}
 import { loadSiteData } from "../routing/site-routes.ts";
 import {
   pagePath,
@@ -164,7 +175,7 @@ export const GET: APIRoute = async () => {
   // ALL locales, deliberately: an entry this build does not route is exactly
   // the thing that used to vanish without trace, and it can only be reported
   // as withheld if it is named as intended first.
-  const intended: IntendedContent[] = [
+  const intended: IntendedEntity[] = [
     ...site.allPosts.map((post) => ({
       id: entryId("posts", post.data.slug, post.data.locale),
       expectedRoute: safePath(() =>
@@ -311,6 +322,15 @@ export const GET: APIRoute = async () => {
         ]),
   ];
 
+  // The split. Everything above computed FULL provenance, because that is what
+  // `provenanceFor` naturally produces and what every internal reader wants.
+  // The manifest gets the same rows with the source site's primary keys taken
+  // out, because it is a ROUTE and a route is served.
+  //
+  // Reduced here, once, at the single point where the public shape diverges —
+  // rather than by building two lists, which is how they would come to
+  // describe different builds. The ids are not lost: they stay in `content/`,
+  // where they were written, and `pnpm provenance` reads them from there.
   const manifest = buildManifest({
     resolved: site.routes.map((route) => ({
       path: route.path,
@@ -330,7 +350,10 @@ export const GET: APIRoute = async () => {
       site.frontPage === undefined ? undefined : identityOf(site.frontPage),
     redirects: redirectMap.rules,
     collections,
-    intended,
+    intended: intended.map((intent) => ({
+      ...intent,
+      provenance: withoutSourceEntity(intent.provenance),
+    })),
     locale: site.locale,
     postTypes: site.postTypes.map((profile) => ({
       name: profile.name,

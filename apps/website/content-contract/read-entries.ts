@@ -22,6 +22,8 @@ import {
   provenanceOfEntity,
   sourceIdentityIssues,
   typeVocabulary,
+  type Provenance,
+  type SourceClaimant,
 } from "../src/content-model/provenance.ts";
 import { clusterKey, localeCode, slug } from "../src/content-model/shared.ts";
 import {
@@ -423,28 +425,17 @@ export function validateContentTree(
     // tree-shaped check made the contract's own fixture trees fail for a
     // reason that had nothing to do with them. `validate-content.ts` owns it.
     ...entryIdentityIssues(entries),
-    // And the provenance form of the same invariant: two entries carrying one
+    // And the provenance form of the same invariant: two entities carrying one
     // WordPress id. Nothing else in the pipeline can see this one — the local
     // identities differ, the routes differ, the output files differ, so slug,
-    // route and output uniqueness all pass and one of the two entries is
-    // still not the entity it claims to be.
-    ...sourceIdentityIssues(
-      entries.flatMap((entry) => {
-        const provenance = provenanceOfEntity({
-          local: `${entry.collection}/${entry.slug}@${entry.locale}`,
-          collection: entry.collection,
-          locale: entry.locale,
-          source:
-            entry.sourceSystem === undefined
-              ? undefined
-              : { system: entry.sourceSystem, sourceId: entry.sourceId },
-          vocabulary,
-        });
-        return provenance === undefined
-          ? []
-          : [{ provenance, by: entry.file ?? provenance.local }];
-      }),
-    ),
+    // route and output uniqueness all pass and one of the two is still not the
+    // entity it claims to be.
+    //
+    // Entries AND registry rows, in one pass, because a source entity is a
+    // source entity whichever file it lives in — and because the ids are no
+    // longer published in the deployment manifest, this is the authoritative
+    // check rather than a duplicate of one.
+    ...sourceIdentityIssues(readProvenance(contentRoot).claims),
     ...unclaimedEntryDirectories(contentRoot),
     ...unclaimedRegistryFiles(contentRoot),
     ...validateClusters(entries),
@@ -461,4 +452,104 @@ export function validateContentTree(
   ];
 
   return { entries, problems, issues };
+}
+
+// ---------------------------------------------------------------------------
+// Provenance, read from the content tree.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every source entity in a content tree, with the local identity it produced.
+ *
+ * ## Why this is read from `content/` and not from a build artifact
+ *
+ * `dist/deployment.json` is a ROUTE, so anything in it is published — and the
+ * WordPress ids describe the site somebody migrated FROM, which a deployment
+ * has no need to serve. So the manifest carries provenance WITHOUT the source
+ * entity, and everything that needs the ids reads them from here.
+ *
+ * That is not a workaround, it is the shorter path. The ids were written into
+ * front matter and registry rows by whoever migrated the content; the content
+ * tree is where they authoritatively live, and a build artifact would only
+ * ever have been a snapshot of this. One fewer file to produce, to keep in
+ * step, and to accidentally deploy.
+ *
+ * The caveat, stated because it is real: a tool that joins this against a
+ * `dist/` built from OLDER content is comparing two moments. Every gate in
+ * this kit that reads `dist/` has that property; run the build first.
+ */
+export function readProvenance(contentRoot: string): {
+  claims: SourceClaimant[];
+  problems: string[];
+} {
+  const claims: SourceClaimant[] = [];
+  const problems: string[] = [];
+
+  const claim = (
+    local: string,
+    collection: string,
+    source: { system: string; sourceId?: string } | undefined,
+    by: string,
+    locale?: string,
+  ): void => {
+    const provenance: Provenance | undefined = provenanceOfEntity({
+      local,
+      collection,
+      locale,
+      source,
+      vocabulary,
+    });
+    if (provenance !== undefined) claims.push({ provenance, by });
+  };
+
+  for (const entry of readEntries(contentRoot).entries)
+    claim(
+      `${entry.collection}/${entry.slug}@${entry.locale}`,
+      entry.collection,
+      entry.sourceSystem === undefined
+        ? undefined
+        : { system: entry.sourceSystem, sourceId: entry.sourceId },
+      entry.file ?? `${entry.collection}/${entry.slug}`,
+      entry.locale,
+    );
+
+  // Registry rows are source entities too — a user, a `category` term, a
+  // `post_tag` term, and every custom taxonomy's terms.
+  const registries: { file: string; collection: string }[] = [
+    { file: "authors.json", collection: "authors" },
+    { file: "categories.json", collection: "categories" },
+    { file: "tags.json", collection: "tags" },
+    ...migration.taxonomies.map((profile) => ({
+      file: `${profile.collection}.json`,
+      collection: profile.collection,
+    })),
+  ];
+
+  for (const registry of registries) {
+    const file = path.join(contentRoot, registry.file);
+    if (!existsSync(file)) continue;
+    let rows: unknown;
+    try {
+      rows = JSON.parse(readFileSync(file, "utf8"));
+    } catch (cause) {
+      problems.push(`${registry.file}: ${(cause as Error).message}`);
+      continue;
+    }
+    if (!Array.isArray(rows)) {
+      problems.push(`${registry.file}: expected an array of registry rows.`);
+      continue;
+    }
+    for (const row of rows as {
+      slug?: string;
+      source?: { system: string; sourceId?: string };
+    }[])
+      claim(
+        `${registry.collection}/${String(row.slug)}`,
+        registry.collection,
+        row.source,
+        `${registry.file} "${String(row.slug)}"`,
+      );
+  }
+
+  return { claims, problems };
 }

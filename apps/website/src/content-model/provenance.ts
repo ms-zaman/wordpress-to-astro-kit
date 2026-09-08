@@ -261,6 +261,87 @@ export function provenanceOfDerived(
 }
 
 // ---------------------------------------------------------------------------
+// Public provenance — the same record with the source site's keys taken out.
+// ---------------------------------------------------------------------------
+
+/**
+ * Provenance as a PUBLIC artifact may carry it: origin, collection, locale and
+ * the derived entity, and never the source site's primary keys.
+ *
+ * ## Why the type says `never` rather than just omitting the field
+ *
+ * `Omit<Provenance, "source">` would describe the same shape and catch nothing:
+ * `source` is optional on `Provenance`, so a full record assigns to an `Omit`
+ * of it without complaint and the key rides along into the JSON. `source?:
+ * never` makes putting one there a compile error at the call site, which is
+ * where a leak would be introduced and the only place it is cheap to stop.
+ *
+ * ## Why the rest of it stays
+ *
+ * `origin` is a category, not an identifier — "this came from WordPress" says
+ * nothing about which install or which row. `collection` and `locale` are
+ * already in the manifest on every route. `derived.declaredBy` names a setting
+ * in THIS repository's own configuration. None of them describes the source
+ * site, and the deployment contract needs every one: the integrity gate joins
+ * on identity and reports a withheld entity by name, and it cannot do either
+ * from a row that says only "something was here".
+ */
+export interface PublicProvenance extends Omit<Provenance, "source"> {
+  readonly source?: never;
+}
+
+/**
+ * Drop the source entity, keeping everything a deployment artifact needs.
+ *
+ * The one place the split happens. A public artifact that wants provenance
+ * calls this; there is no second path that could quietly forget to.
+ */
+export function withoutSourceEntity(record: Provenance): PublicProvenance {
+  const { source: _source, ...rest } = record;
+  return rest;
+}
+
+/**
+ * Everything structurally wrong with a record that is DELIBERATELY missing its
+ * source entity.
+ *
+ * Not `provenanceProblems` with a flag: the two disagree about the same field
+ * in opposite directions, and a boolean parameter that inverts a rule is how a
+ * check ends up being called with the wrong argument and passing. Here, a
+ * `wordpress` row with no source entity is correct, and a row that still
+ * carries one is the defect — which is the regression this whole change is
+ * about, stated as a rule the build audit runs on every build.
+ */
+export function publicProvenanceProblems(record: PublicProvenance): string[] {
+  const problems: string[] = [];
+
+  if (record.source !== undefined)
+    problems.push(
+      "carries a source entity. Public deployment metadata records that " +
+        "something came from WordPress, never which row it was: a served " +
+        "artifact that lists the source site's primary keys describes the " +
+        "install this site was migrated FROM, and nobody asked for that to be " +
+        "public. The ids are kept in the internal provenance artifact.",
+    );
+
+  if (record.origin === "derived") {
+    if (record.derived === undefined)
+      problems.push('origin is "derived" but nothing says what derives it.');
+    else if (record.derived.declaredBy === "")
+      problems.push(
+        'a derived entity names no configuration; "the code makes it" is not ' +
+          "an answer a reader can act on.",
+      );
+  } else if (record.derived !== undefined) {
+    problems.push(
+      `origin is "${record.origin}" but a derived entity is recorded.`,
+    );
+  }
+
+  return problems;
+}
+
+// ---------------------------------------------------------------------------
 // The invariants.
 // ---------------------------------------------------------------------------
 

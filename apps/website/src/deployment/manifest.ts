@@ -17,7 +17,7 @@ import {
   type EnvironmentRecord,
 } from "./build-metadata.ts";
 import type { IntendedContent } from "./content-integrity.ts";
-import { provenanceProblems } from "../content-model/provenance.ts";
+import { publicProvenanceProblems } from "../content-model/provenance.ts";
 import {
   buildRouteInventory,
   countRoutes,
@@ -492,7 +492,8 @@ function validateContent(content: unknown, problem: Report): void {
 }
 
 /**
- * Every intended entity, and the origin each one states.
+ * Every intended entity, the origin each one states, and the source ids none
+ * of them may carry.
  *
  * Checked here as well as in `content:integrity` on purpose: this validator
  * runs inside `render:build-audit`, over a manifest that may have been written
@@ -500,6 +501,12 @@ function validateContent(content: unknown, problem: Report): void {
  * where they came from is not a manifest anything can trace a migration
  * through. The TypeScript type requires `provenance`; JSON cannot, so this
  * does.
+ *
+ * It is also where the exposure rule is ENFORCED rather than documented. The
+ * manifest is a served route, so a source entity appearing in one of these
+ * rows is a leak — and because this runs on every build, a future change that
+ * reintroduces one fails the build audit instead of being noticed by whoever
+ * reads the artifact next.
  */
 function validateIntended(intended: unknown, problem: Report): void {
   if (intended === undefined) return;
@@ -530,8 +537,8 @@ function validateIntended(intended: unknown, problem: Report): void {
       );
       return;
     }
-    for (const detail of provenanceProblems(
-      provenance as unknown as Parameters<typeof provenanceProblems>[0],
+    for (const detail of publicProvenanceProblems(
+      provenance as unknown as Parameters<typeof publicProvenanceProblems>[0],
     ))
       problem(`${at}.provenance`, `"${row.id}": ${detail}`);
   });

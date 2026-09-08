@@ -32,6 +32,11 @@ exactly the case a slug cannot survive. `pnpm provenance` reads them back and
 answers which source entity produced any URL or file in a build; two entries
 carrying one id is a collision no other check in this kit can see.
 
+**These ids stay here.** `dist/deployment.json` is a served route, so it records
+that an entity came from WordPress and never which row it was — a deployment has
+no use for the source site's primary keys, and this tree is where they
+authoritatively live.
+
 Media is not stored here. Upload references keep WordPress's
 `/wp-content/uploads/` namespace byte-for-byte; which host serves them after
 cutover is one build variable (`rendering/media.ts`).

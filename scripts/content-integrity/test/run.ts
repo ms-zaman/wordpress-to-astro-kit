@@ -23,8 +23,9 @@ import {
   rowId,
 } from "../../../apps/website/src/deployment/content-identity.ts";
 import {
-  provenanceOfDerived,
+  withoutSourceEntity,
   type Provenance,
+  type PublicProvenance,
 } from "../../../apps/website/src/content-model/provenance.ts";
 
 let passed = 0;
@@ -59,8 +60,26 @@ const POST = entryId("posts", "hello-world", "en");
 const PAGE = entryId("pages", "about", "en");
 const CATEGORY = rowId("categories", "news");
 
-/** A WordPress-sourced record, for the fixtures that need one. */
+/**
+ * A WordPress-sourced record as the MANIFEST carries one: origin stated, source
+ * entity absent.
+ *
+ * The manifest is a served route, so the source site's primary keys are not in
+ * it — they stay in `content/`, and the gate receives them separately as
+ * `sourceClaims` when a caller has read them. `withoutSourceEntity` is used
+ * rather than hand-writing the reduced shape, so these fixtures go through the
+ * same reduction the build does.
+ */
 const wp = (
+  local: string,
+  kind: "post" | "term" | "user",
+  type: string,
+  id: number,
+  locale?: string,
+): PublicProvenance => withoutSourceEntity(full(local, kind, type, id, locale));
+
+/** The same record with its source entity, as `content/` yields one. */
+const full = (
   local: string,
   kind: "post" | "term" | "user",
   type: string,

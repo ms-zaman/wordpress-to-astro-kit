@@ -26,6 +26,7 @@ import {
   type Exclusion,
   type IntendedContent,
 } from "../../apps/website/src/deployment/content-integrity.ts";
+import { readProvenance } from "../../apps/website/content-contract/read-entries.ts";
 import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
@@ -131,11 +132,36 @@ const exclusions: Exclusion[] = [
   ...unpublishedTaxonomyExclusions(intended, withheldTaxonomies),
 ];
 
+// The source-identity contest check needs the WordPress ids, and the manifest
+// deliberately does not carry them — it is a served route, and a deployment has
+// no need to publish the source site's primary keys. They are read from
+// `content/`, where whoever migrated the content wrote them.
+//
+// The AUTHORITATIVE check is upstream: `pnpm content:validate` runs it over the
+// filesystem, which is the only layer that sees two entries claiming one id.
+// This is defence in depth, and it says so when it cannot run rather than
+// reporting zero findings — a gate that finds nothing because it was given
+// nothing to read is the failure this whole tool exists to prevent.
+const contentRoot = path.join(repositoryRoot, "content");
+let sourceClaims;
+let sourceNote = "";
+try {
+  const provenance = readProvenance(contentRoot);
+  sourceClaims = provenance.claims;
+  sourceNote = `  source ids      ${provenance.claims.length} read from content/\n`;
+} catch (cause) {
+  sourceNote =
+    `  source ids      NOT READ — ${(cause as Error).message}. The ` +
+    `one-source-entity-one-local-entity check did not run here; ` +
+    `\`pnpm content:validate\` is where it is authoritative.\n`;
+}
+
 const report = checkContentIntegrity({
   intended,
   emitted: inventory,
   exclusions,
   filesInDist,
+  sourceClaims,
 });
 
 process.stdout.write(
@@ -148,6 +174,7 @@ process.stdout.write(
       .map(([key, value]) => `${key} ${value}`)
       .join(", ")})\n` +
     `  excluded        ${report.excluded.length}\n` +
+    sourceNote +
     (postTypeRecords.length === 0
       ? ""
       : `  custom types    ${postTypeRecords

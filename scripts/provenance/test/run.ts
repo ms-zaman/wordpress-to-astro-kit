@@ -23,10 +23,18 @@
 // only reason a re-capture can find anything — and two entries claiming one
 // source entity is invisible to every check that reads the last three, because
 // all three of them differ.
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import {
   CORE_SOURCE_TYPES,
@@ -34,12 +42,17 @@ import {
   provenanceOfDerived,
   provenanceOfEntity,
   provenanceProblems,
+  publicProvenanceProblems,
   sourceIdentityIssues,
   sourceKey,
   typeVocabulary,
+  withoutSourceEntity,
   type Provenance,
 } from "../../../apps/website/src/content-model/provenance.ts";
-import { validateContentTree } from "../../../apps/website/content-contract/read-entries.ts";
+import {
+  readProvenance,
+  validateContentTree,
+} from "../../../apps/website/content-contract/read-entries.ts";
 import {
   checkContentIntegrity,
   findingsOfKind,
@@ -74,6 +87,11 @@ import type {
   PostTypeProfile,
   TaxonomyProfile,
 } from "../../../migration.config.ts";
+
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 
 let passed = 0;
 const failures: string[] = [];
@@ -670,24 +688,28 @@ const HEALTHY_INTENDED: IntendedContent[] = [
   {
     id: "posts/hello-world@en",
     expectedRoute: "/hello-world/",
-    provenance: provenanceOfEntity({
-      local: "posts/hello-world@en",
-      collection: "posts",
-      locale: "en",
-      source: wp(1),
-      vocabulary,
-    })!,
+    provenance: withoutSourceEntity(
+      provenanceOfEntity({
+        local: "posts/hello-world@en",
+        collection: "posts",
+        locale: "en",
+        source: wp(1),
+        vocabulary,
+      })!,
+    ),
   },
   {
     id: "products/analyser@en",
     expectedRoute: "/products/analyser/",
-    provenance: provenanceOfEntity({
-      local: "products/analyser@en",
-      collection: "products",
-      locale: "en",
-      source: wp(42),
-      vocabulary,
-    })!,
+    provenance: withoutSourceEntity(
+      provenanceOfEntity({
+        local: "products/analyser@en",
+        collection: "products",
+        locale: "en",
+        source: wp(42),
+        vocabulary,
+      })!,
+    ),
   },
   {
     id: "@archive/products",
@@ -756,6 +778,13 @@ check("M1: an emitted output stripped of its identity fails", () => {
 });
 
 check("M2: two entries claiming ONE source entity fail", () => {
+  const first = provenanceOfEntity({
+    local: "posts/hello-world@en",
+    collection: "posts",
+    locale: "en",
+    source: wp(1),
+    vocabulary,
+  })!;
   const twin = provenanceOfEntity({
     local: "posts/second@en",
     collection: "posts",
@@ -767,7 +796,52 @@ check("M2: two entries claiming ONE source entity fail", () => {
   const report = integrity({
     intended: [
       ...HEALTHY_INTENDED,
-      { id: "posts/second@en", expectedRoute: "/second/", provenance: twin },
+      {
+        id: "posts/second@en",
+        expectedRoute: "/second/",
+        provenance: withoutSourceEntity(twin),
+      },
+    ],
+    emitted: [
+      ...HEALTHY_EMITTED,
+      {
+        path: "/second",
+        file: "second/index.html",
+        origin: "post",
+        entry: "posts/second@en",
+      },
+    ],
+    filesInDist: new Set([...HEALTHY_FILES, "second/index.html"]),
+    // The ids come from `content/`, not from the manifest — which no longer
+    // carries them, because it is served.
+    sourceClaims: [{ provenance: first }, { provenance: twin }],
+  });
+  const found = findingsOfKind(report.findings, "PROVENANCE_CONTESTED");
+  equal(found.length, 1, "reported");
+  equal(found[0]!.subject, "wp:post/post#1@en", "named by source key");
+});
+
+check("WITHOUT THE SOURCE IDS THE GATE DOES NOT PRETEND TO CHECK", () => {
+  // The same corrupt build, with no `sourceClaims`. It must report nothing
+  // for that rule rather than a clean bill of health it did not earn — the
+  // CLI says out loud that the check did not run, and the authoritative one is
+  // the content contract, upstream, reading the filesystem.
+  const report = integrity({
+    intended: [
+      ...HEALTHY_INTENDED,
+      {
+        id: "posts/second@en",
+        expectedRoute: "/second/",
+        provenance: withoutSourceEntity(
+          provenanceOfEntity({
+            local: "posts/second@en",
+            collection: "posts",
+            locale: "en",
+            source: wp(1),
+            vocabulary,
+          })!,
+        ),
+      },
     ],
     emitted: [
       ...HEALTHY_EMITTED,
@@ -780,9 +854,11 @@ check("M2: two entries claiming ONE source entity fail", () => {
     ],
     filesInDist: new Set([...HEALTHY_FILES, "second/index.html"]),
   });
-  const found = findingsOfKind(report.findings, "PROVENANCE_CONTESTED");
-  equal(found.length, 1, "reported");
-  equal(found[0]!.subject, "wp:post/post#1@en", "named by source key");
+  equal(
+    findingsOfKind(report.findings, "PROVENANCE_CONTESTED").length,
+    0,
+    "no claim is made either way",
+  );
 });
 
 check("M3: THE MUTATION NO OTHER CHECK CAN SEE", () => {
@@ -975,6 +1051,153 @@ check("HALF THE MUTATIONS FAIL BEFORE THE BUILD EVER RUNS", () => {
   // an entity that was already lost at an upstream boundary.
   const upstream = ["M2", "M3", "M4", "M7", "M11", "M12"];
   assert(upstream.length * 2 >= 12, "at least half");
+});
+
+// ---------------------------------------------------------------------------
+console.log("\nThe public/internal split — ids stay out of what is served");
+
+check("withoutSourceEntity drops the key, and keeps everything else", () => {
+  const record = provenanceOfEntity({
+    local: "products/analyser@en",
+    collection: "products",
+    locale: "en",
+    source: wp(42),
+    vocabulary,
+  })!;
+  const reduced = withoutSourceEntity(record);
+  assert(!("source" in reduced), "the source entity is gone");
+  equal(reduced.origin, "wordpress", "the ORIGIN survives");
+  equal(reduced.collection, "products", "and the collection");
+  equal(reduced.locale, "en", "and the locale");
+  // Origin, collection and locale are not identifiers of the source SITE —
+  // they are facts about this build, already on every route in the manifest.
+  // Dropping them would break the integrity join for nothing.
+});
+
+check("A PUBLIC ROW CARRYING A SOURCE ENTITY IS A DEFECT", () => {
+  const leaked = provenanceOfEntity({
+    local: "posts/hello-world@en",
+    collection: "posts",
+    locale: "en",
+    source: wp(1),
+    vocabulary,
+  })!;
+  const problems = publicProvenanceProblems(leaked);
+  equal(problems.length, 1, "reported");
+  assert(problems[0]!.includes("source entity"), "and named");
+
+  // The mirror image: the INTERNAL rule still demands one, so the two checks
+  // cannot be confused for each other or quietly swapped.
+  equal(provenanceProblems(leaked).length, 0, "internally it is correct");
+  equal(
+    provenanceProblems(withoutSourceEntity(leaked)).length,
+    1,
+    "and the reduced row is NOT valid internal provenance",
+  );
+});
+
+check("THE MANIFEST VALIDATOR REFUSES A LEAK", () => {
+  // The regression gate, and it runs on every build inside
+  // `render:build-audit` — so a future change that puts the ids back fails
+  // the ladder rather than being noticed by whoever reads the artifact next.
+  const withSource = validateManifest({
+    manifestVersion: 3,
+    generator: "wpk-website",
+    build: {},
+    routes: {},
+    content: {
+      collections: [],
+      entries: 0,
+      intended: [
+        {
+          id: "posts/hello-world@en",
+          provenance: {
+            local: "posts/hello-world@en",
+            origin: "wordpress",
+            collection: "posts",
+            source: { kind: "post", type: "post", id: 1 },
+          },
+        },
+      ],
+    },
+    hosting: {},
+  });
+  assert(
+    withSource.some(
+      (problem) =>
+        problem.at.startsWith("content.intended") &&
+        problem.detail.includes("source entity"),
+    ),
+    `reported: ${withSource.map((p) => p.at).join(", ")}`,
+  );
+});
+
+check("NO SOURCE ID REACHES THE REAL BUILT MANIFEST", () => {
+  // Not a model test: this reads the file the last build actually wrote and
+  // that a host would actually serve. Skipped when there is no build, and
+  // SAID so — a regression test that silently passes because it found nothing
+  // to read is worse than no test.
+  const file = path.join(repositoryRoot, "apps/website/dist/deployment.json");
+  if (!existsSync(file)) {
+    console.log(
+      "    (no build in dist/ — run `pnpm build` to check the real artifact)",
+    );
+    return;
+  }
+  const text = readFileSync(file, "utf8");
+  for (const forbidden of ["sourceId", "wp:post/", "wp:term/", "wp:user/"])
+    assert(
+      !text.includes(forbidden),
+      `"${forbidden}" is in the served manifest`,
+    );
+
+  const parsed = JSON.parse(text) as {
+    content: {
+      intended: { id: string; provenance?: Record<string, unknown> }[];
+    };
+  };
+  const leaked = parsed.content.intended.filter(
+    (row) => row.provenance !== undefined && "source" in row.provenance,
+  );
+  equal(leaked.length, 0, `rows with a source entity: ${leaked.length}`);
+
+  // And the deployment contract is intact: every row is still identifiable
+  // and still states where it came from.
+  assert(parsed.content.intended.length > 0, "the manifest lists content");
+  for (const row of parsed.content.intended) {
+    assert(typeof row.id === "string" && row.id !== "", `id on ${row.id}`);
+    assert(typeof row.provenance?.origin === "string", `origin on ${row.id}`);
+  }
+});
+
+check("AND THE IDS ARE STILL THERE, IN content/", () => {
+  // The other half of the change: removing them from the served artifact must
+  // not have removed them from the kit. This reads the repository's own tree.
+  const { claims, problems } = readProvenance(
+    path.join(repositoryRoot, "content"),
+  );
+  equal(problems.length, 0, `content/ read cleanly: ${problems.join("; ")}`);
+  assert(claims.length > 0, "the content tree yields provenance");
+  for (const claim of claims)
+    assert(
+      typeof claim.provenance.origin === "string",
+      `${claim.by} states an origin`,
+    );
+
+  // A tree whose entries DO carry WordPress ids yields source keys, which is
+  // what `pnpm provenance` prints and what the contest check joins on.
+  const captured = withTree((root) => {
+    write(root, "posts/hello-world.md", entryFile("hello-world", "en", 1));
+    return readProvenance(root);
+  });
+  const keys = captured.claims
+    .map((claim) => claim.provenance.source)
+    .filter((source) => source !== undefined)
+    .map((source) => sourceKey(source!));
+  assert(
+    keys.includes("wp:post/post#1@en"),
+    `source keys read back: ${keys.join(", ")}`,
+  );
 });
 
 // ---------------------------------------------------------------------------

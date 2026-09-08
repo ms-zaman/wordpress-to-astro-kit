@@ -54,35 +54,58 @@ own — so `/product-category/laptops/` answers "which source entity?" with
 
 ## Where provenance is written, and where it is checked
 
-| stage                                     | what carries it                            | what is checked, and where                                                                   |
-| ----------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `content/` front matter and registry rows | `source: { system, sourceId, capturedAt }` | a WordPress entity's id is a **positive integer** — a slug or a URL is refused by the schema |
-| the content contract                      | the files, read directly                   | **one source entity, one local entity** (`content:contract`, `content:validate`)             |
-| the collection loader                     | `data.source`                              | ids come from the file path, so translations sharing a slug both load                        |
-| the resolver                              | `provenanceOf(route)`                      | every route resolves to exactly one claimant                                                 |
-| the manifest                              | `content.intended[].provenance`            | every intended entity **states an origin** (`render:build-audit`)                            |
-| `dist/`                                   | `routes.inventory[].entry` + `claimOf`     | every emitted output has exactly one owner (`content:integrity`)                             |
+| stage                                     | what carries it                                              | what is checked, and where                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `content/` front matter and registry rows | `source: { system, sourceId, capturedAt }`                   | a WordPress entity's id is a **positive integer** — a slug or a URL is refused by the schema    |
+| the content contract                      | the files, read directly                                     | **one source entity, one local entity** (`content:contract`, `content:validate`)                |
+| the collection loader                     | `data.source`                                                | ids come from the file path, so translations sharing a slug both load                           |
+| the resolver                              | `provenanceOf(route)`                                        | every route resolves to exactly one claimant                                                    |
+| the manifest                              | `content.intended[].provenance`, **minus the source entity** | every intended entity **states an origin**, and none carries a source id (`render:build-audit`) |
+| `dist/`                                   | `routes.inventory[].entry` + `claimOf`                       | every emitted output has exactly one owner (`content:integrity`)                                |
 
 Provenance is deliberately **absent from the rendered page**. It is migration
 machinery, and a site that printed its WordPress post ids would be telling every
 visitor which install it came from. A browser test asserts that it does not.
 
-## The artifact is the manifest
+## Two halves, in two places, for one reason
 
-**`dist/deployment.json` is a served route.** It already described your whole
-content inventory — every identity, locale, collection and type key — and it now
-also carries the source site's primary keys. That is not a secret and not a
-credential, but it is a description of the site you migrated from, and
-[the route-ownership table](../../docs/04-implementation/route-ownership-table.md)
-says how to stop publishing it if you would rather not.
+The lineage this prints is a join:
 
-There is no `provenance.json`. Everything this reads is already in
-`dist/deployment.json` — `content.intended` carries each entity's local identity
-and origin, `routes.inventory` carries the route and file each identity
-produced — and a second artifact would be a second copy of one join, which is a
-thing that can drift from the first. This command is a **reader**; `--json`
-writes the join to stdout for CI without putting a file on disk that somebody
-has to keep in step.
+    content/                 local identity → SOURCE ENTITY
+    dist/deployment.json     local identity → route, output file
+
+**`dist/deployment.json` is a route, so everything in it is served.** It
+describes the site being deployed — identities, collections, locales, type
+keys, what was withheld — and it deliberately carries provenance _without_ the
+source entity. The WordPress post, term and user ids describe the install the
+content came FROM, and a deployment has no use for them.
+
+So the ids stay in `content/`, where whoever migrated the content wrote them.
+That is not a workaround, it is the shorter path: the content tree is where they
+authoritatively live, and any build artifact would only have been a snapshot of
+it — one more file to produce, keep in step, and accidentally deploy. There is
+no `provenance.json` and no third artifact; `--json` writes the join to stdout
+and nothing is written to disk.
+
+The split is deliberately not a hash. Hashing a post id publishes the same
+information wearing a hat — the set is small and the ids are sequential — and
+the fix for "this should not be public" is to not publish it.
+
+Three checks keep it that way, all of them on every build:
+
+| where                                           | what it refuses                              |
+| ----------------------------------------------- | -------------------------------------------- |
+| `validateManifest`, inside `render:build-audit` | a `source` on any intended row               |
+| the build audit                                 | any `sourceId`-shaped key in the served text |
+| `scripts/browser-tests/provenance.spec.ts`      | the same, fetched over HTTP                  |
+
+The type system carries the rule too: `PublicProvenance` declares
+`source?: never`, so assigning a full record to a manifest row is a compile
+error inside `apps/website` rather than a review comment.
+
+**The caveat, because it is real:** this joins today's `content/` against the
+last build's `dist/`. Every gate in this kit that reads `dist/` has that
+property — run `pnpm build` first.
 
 ## What is not supported
 

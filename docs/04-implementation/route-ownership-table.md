@@ -33,21 +33,29 @@ Every route is static, so none needs an adapter or a hosting decision.
 `hosting.provider` are `null`, and the rendering contract fails if either
 stops being.
 
-**`/deployment.json` is served, and it describes your migration.** It lists
-every content identity, every collection, every custom post type and taxonomy
-key, every withheld entity, and — since provenance — the **source site's
-primary keys**: the WordPress post, term and user ids each entity came from.
-None of that is secret (a live WordPress install publishes its ids through
-`?p=` and its REST API), and none of it is a credential, but it is a
-description of the site you migrated FROM and nobody asked you whether it
-should be public.
+**`/deployment.json` is served, so it describes this build and not the source
+site.** It lists every content identity, collection, custom post type and
+taxonomy key, and every withheld entity — all of which describe the site being
+deployed. It deliberately does **not** carry the source site's primary keys:
+the WordPress post, term and user ids each entity was migrated from.
 
-It is a route like any other, so the decision is yours and it costs one
-deletion: remove `src/pages/deployment.json.ts` and the manifest stops being
-published. The gates do not depend on the route — they read the file out of
-`dist/`, and deleting the module removes it from `dist/` too, which is what
-makes this a real choice rather than a toggle. If you want the gates and not
-the exposure, exclude the file at the point of deploy instead; the route
-inventory names it, so it is one line in a deploy filter.
+Those ids are real provenance and the kit keeps them, in `content/`, where
+whoever migrated the content wrote them — see
+[scripts/provenance/](../../scripts/provenance/README.md). A deployment has no
+use for them, and a served artifact listing them would describe the install
+this site came from to anybody who asked. They are not secret and not a
+credential; they are simply not deployment metadata.
+
+This is enforced rather than remembered. `validateManifest` refuses a source
+entity on any intended row, the build audit scans the served text for
+source-id keys, and a Playwright test fetches `/deployment.json` over HTTP and
+asserts the same — so putting them back fails the ladder instead of being
+noticed by whoever reads the artifact next.
+
+What remains is the manifest itself: it still describes your build's routes,
+content and hosting decision to anyone who requests it. If you would rather
+publish nothing at all, delete `src/pages/deployment.json.ts` — the route stops
+existing, and so does the file the gates read, which makes it a real choice
+rather than a toggle.
 
 **Indexing is the launch switch, not a per-route property.**

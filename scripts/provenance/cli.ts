@@ -8,19 +8,27 @@
 //   node scripts/provenance/cli.ts withheld              what was not emitted
 //   node scripts/provenance/cli.ts --json                the table, machine-readable
 //
-// ## Why this reads the manifest and writes nothing
+// ## Where each half comes from, and why they are in different places
 //
-// The build already emits every fact this needs: `content.intended` carries
-// each entity's local identity and its provenance, and `routes.inventory`
-// carries the route and the output file each identity produced. A second
-// artifact would be a second copy of the same join, and a second copy is a
-// thing that can drift from the first — which is the failure mode this kit
-// keeps finding in its own past.
+// The lineage this prints is a join of two things:
 //
-// So the artifact is `dist/deployment.json`, and this is a READER of it. The
-// join it performs is the answer to the four questions in the header, and
-// `--json` writes that join to stdout for CI or a migration report without
-// putting a second file on disk that somebody has to keep in step.
+//     content/                 local identity → SOURCE ENTITY
+//     dist/deployment.json     local identity → route, output file
+//
+// The source ids are read from the content tree rather than from the build,
+// because `dist/deployment.json` is a ROUTE — everything in `dist/` is served,
+// and the WordPress ids describe the site somebody migrated FROM, which a
+// deployment has no need to publish. The manifest therefore carries provenance
+// WITHOUT the source entity, and the ids stay where whoever migrated the
+// content wrote them.
+//
+// That also means there is no third artifact to produce, keep in step, or
+// accidentally deploy. `--json` writes the join to stdout for CI or a
+// migration report; nothing is written to disk.
+//
+// The caveat, because it is real: this joins today's `content/` against the
+// last build's `dist/`. Every gate in this kit that reads `dist/` has that
+// property — run `pnpm build` first.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -29,7 +37,9 @@ import { fileURLToPath } from "node:url";
 import {
   sourceKey,
   type Provenance,
+  type PublicProvenance,
 } from "../../apps/website/src/content-model/provenance.ts";
+import { readProvenance } from "../../apps/website/content-contract/read-entries.ts";
 import { parseArgs } from "../lib/args.ts";
 
 const repositoryRoot = path.resolve(
@@ -49,7 +59,7 @@ const distDirectory = path.resolve(
 interface IntendedRow {
   id: string;
   expectedRoute?: string;
-  provenance?: Provenance;
+  provenance?: PublicProvenance;
 }
 interface InventoryRow {
   path: string;
@@ -88,6 +98,19 @@ if (intended.length === 0) {
   process.exit(1);
 }
 
+// The source half, from `content/`. A missing or unreadable tree is reported
+// rather than quietly producing a table with an empty SOURCE column — a report
+// that says "nothing came from WordPress" because it failed to look is the
+// exact failure this kit keeps finding in its own gates.
+const contentRoot = path.join(repositoryRoot, "content");
+const { claims, problems: contentProblems } = readProvenance(contentRoot);
+for (const problem of contentProblems)
+  process.stderr.write(`  ! content/${problem}\n`);
+
+const sourceByLocal = new Map<string, Provenance>();
+for (const claim of claims)
+  sourceByLocal.set(claim.provenance.local, claim.provenance);
+
 /** Every route and output one local identity produced. */
 const claimsByIdentity = new Map<string, InventoryRow[]>();
 for (const row of inventory) {
@@ -116,7 +139,10 @@ interface Lineage {
 const lineage: Lineage[] = intended
   .map((row) => {
     const claims = claimsByIdentity.get(row.id) ?? [];
-    const provenance = row.provenance;
+    // The manifest's row says WHAT it is; `content/` says which source entity
+    // it was. Neither half is complete on its own, which is the whole shape of
+    // this command.
+    const provenance = sourceByLocal.get(row.id) ?? row.provenance;
     return {
       local: row.id,
       origin: provenance?.origin ?? "unstated",
