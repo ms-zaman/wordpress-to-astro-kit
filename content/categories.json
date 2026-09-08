@@ -1,12 +1,33 @@
 [
   {
     "slug": "uncategorized",
-    "name": { "en": "Uncategorized" },
-    "source": { "system": "sample" }
+    "name": {
+      "en": "Uncategorized"
+    },
+    "source": {
+      "system": "sample"
+    }
   },
   {
     "slug": "news",
-    "name": { "en": "News" },
-    "source": { "system": "sample" }
+    "name": {
+      "en": "News"
+    },
+    "source": {
+      "system": "sample"
+    }
+  },
+  {
+    "slug": "releases",
+    "parent": "news",
+    "name": {
+      "en": "Releases"
+    },
+    "description": {
+      "en": "Filed under news — and its URL says so, the way WordPress files a child category."
+    },
+    "source": {
+      "system": "sample"
+    }
   }
 ]

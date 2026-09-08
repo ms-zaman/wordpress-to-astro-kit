@@ -362,8 +362,9 @@ export const GET: APIRoute = async () => {
       archive: profile.archive.kind,
       taxonomies: profile.taxonomies.attached,
     })),
-    taxonomies: site.taxonomies.map((taxonomy) => ({
+    taxonomies: site.allTaxonomies.map((taxonomy) => ({
       name: taxonomy.name,
+      builtIn: taxonomy.builtIn,
       collection: taxonomy.collection,
       published: taxonomy.published,
       appliesTo: taxonomy.appliesTo,

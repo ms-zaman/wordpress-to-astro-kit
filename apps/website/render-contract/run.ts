@@ -6,6 +6,7 @@
 // `dist/`.
 //
 // Node 24 baseline, no test runner. Invoke with `pnpm render`.
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -312,7 +313,11 @@ check(
   // post can only collide when the two patterns happen to have the same
   // shape, which is true of the defaults and of nothing else. Two rows of one
   // registry collide under every pattern there is.
-  "two routes claiming one path throw by name",
+  "TWO TERMS WITH ONE SLUG THROW AS A DUPLICATE, NOT AS A ROUTE COLLISION",
+  // This used to report "Two routes claim /category/news" — true, and two
+  // steps downstream of the actual problem. Core taxonomies now run the same
+  // registry rules a configured one does, so a duplicate slug is named as
+  // what it is, and WordPress's own rule is cited.
   throws(
     () =>
       resolveSiteRoutes({
@@ -322,7 +327,7 @@ check(
           { slug: "news", name: { en: "News again" } },
         ],
       }),
-    /Two routes claim /,
+    /two terms with slug "news"/,
   ),
 );
 check(
@@ -843,10 +848,21 @@ const contentRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../content",
 );
+// The registries are READ, not restated. They were a hand-written list here,
+// which is a second authority for the same fact — and it drifted the moment a
+// category was added to `content/categories.json`, failing this check for a
+// reason that had nothing to do with the content tree.
+const slugsIn = (file: string): string[] =>
+  (
+    JSON.parse(readFileSync(path.join(contentRoot, file), "utf8")) as {
+      slug: string;
+    }[]
+  ).map((row) => row.slug);
+
 const tree = validateContentTree(contentRoot, {
-  authors: ["jane-doe"],
-  categories: ["uncategorized", "news"],
-  tags: ["sample"],
+  authors: slugsIn("authors.json"),
+  categories: slugsIn("categories.json"),
+  tags: slugsIn("tags.json"),
 });
 check(
   "the content tree reads cleanly",

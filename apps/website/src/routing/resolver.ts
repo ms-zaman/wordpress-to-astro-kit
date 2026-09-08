@@ -18,8 +18,13 @@ import type { SourceBlock } from "../content-model/provenance.ts";
 import { paginate, type PageOf } from "../content-index/pagination.ts";
 import { routeKey } from "./url-shape.ts";
 import {
+  coreTaxonomies,
+  termsOf,
+  userTaxonomies,
+  type ResolvedTaxonomy,
+} from "./taxonomies.ts";
+import {
   authorPath,
-  categoryPath,
   customTypeArchivePath,
   customTypePath,
   taxonomyProfileProblems,
@@ -31,7 +36,6 @@ import {
   permalinks,
   postPath,
   postsIndexPath,
-  tagPath,
 } from "./permalink.ts";
 
 export interface PostEntryData {
@@ -114,21 +118,15 @@ export interface AuthorRow {
   readonly avatar?: { readonly url: string; readonly alt?: string };
 }
 
-export interface TermRow {
-  /**
-   * Where the entity came from — the `source` block the content model
-   * requires on every source entity.
-   *
-   * Declared here because a type that omits it makes the resolver blind to it,
-   * and that is not a hypothetical: this field WAS in the front matter and was
-   * absent from these interfaces, so nothing from the resolver onward — route,
-   * inventory, manifest, `dist/` — could say which WordPress entity a page
-   * was a page of. See content-model/provenance.ts.
-   */
-  readonly source?: SourceBlock;
-  readonly slug: string;
-  readonly name: Readonly<Partial<Record<string, string>>>;
-}
+/**
+ * A registry row of ANY taxonomy — core or configured.
+ *
+ * One type, because there is now one schema: `content/categories.json` and
+ * `content/product-categories.json` hold the same shape, and a core category
+ * has a `parent` for the same reason a custom term does. `TaxonomyTermRow` is
+ * the name the custom side already used; this is the same thing.
+ */
+export type TermRow = TaxonomyTermRow;
 
 export interface RouteSources<
   Post extends EntryLike<PostEntryData>,
@@ -325,11 +323,34 @@ export interface SiteRouteTable<
   readonly authorOf: (slug: string) => AuthorRow | undefined;
   readonly categoryOf: (slug: string) => TermRow | undefined;
   readonly tagOf: (slug: string) => TermRow | undefined;
+  /**
+   * The URL a core term's archive is published at.
+   *
+   * Held here rather than recomputed by each caller, because a hierarchical
+   * category's URL depends on its ancestors and a caller with only a slug
+   * cannot know them. `PostPage` linked its post's categories with
+   * `categoryPath(slug)` — correct while every category was flat, and a 404
+   * the moment one had a parent.
+   */
+  readonly termHref: (
+    taxonomy: "category" | "post_tag",
+    slug: string,
+  ) => string | undefined;
   /** Every routed custom-type entry, by collection. */
   readonly custom: Readonly<Record<string, readonly Custom[]>>;
   /** The profiles this table routed, so an audit need not re-read the config. */
   readonly postTypes: readonly PostTypeProfile[];
   readonly taxonomies: readonly TaxonomyProfile[];
+  /**
+   * Every taxonomy this build routed, WordPress's own two included.
+   *
+   * `taxonomies` stays the CONFIGURED list, because that is what collection
+   * ownership and the stored-only exclusions are computed from — the core
+   * collections are owned by the kit's content model, and a user profile
+   * claiming one is still a contest. This is the list for anything that wants
+   * to describe or audit taxonomies uniformly.
+   */
+  readonly allTaxonomies: readonly ResolvedTaxonomy[];
   /** Every routed term, by registry collection. */
   readonly terms: Readonly<Record<string, readonly TaxonomyTermRow[]>>;
 }
@@ -387,6 +408,76 @@ const describe = <
       return `${route.archive} archive "${route.title}" page ${route.page.page}`;
   }
 };
+
+/**
+ * Index one taxonomy's registry: duplicate slugs, parents, ancestors.
+ *
+ * Extracted so WordPress's own `category` runs the SAME rules a configured
+ * taxonomy does. It did not, before: core categories had no `parent` field to
+ * check, no cycle guard and no duplicate-slug throw of their own — the
+ * filesystem check in `validate-content.ts` was all that stood between two
+ * `news` rows and a silently dropped archive.
+ */
+function indexTerms(
+  taxonomy: { name: string; hierarchical: boolean },
+  rows: readonly TaxonomyTermRow[],
+): {
+  bySlug: Map<string, TaxonomyTermRow>;
+  ancestorsOf: (row: TaxonomyTermRow) => TaxonomyTermRow[];
+} {
+  // WordPress guarantees this and the kit enforces it rather than inventing a
+  // disambiguation WordPress does not have: `wp_unique_term_slug()` refuses a
+  // slug that already exists in the SAME taxonomy, appending a parent suffix
+  // or a number. Two terms sharing one slug here would share one URL.
+  const bySlug = new Map<string, TaxonomyTermRow>();
+  for (const row of rows) {
+    if (bySlug.has(row.slug))
+      throw new Error(
+        `Taxonomy "${taxonomy.name}" has two terms with slug "${row.slug}". ` +
+          "WordPress does not allow that — wp_unique_term_slug() makes a " +
+          "colliding slug unique within its taxonomy — so one of these did " +
+          "not come from the source site, or the capture lost the suffix.",
+      );
+    bySlug.set(row.slug, row);
+  }
+
+  // A parent on a flat taxonomy is data the URL model cannot express, and
+  // silently ignoring it would file a term somewhere the source did not.
+  if (!taxonomy.hierarchical)
+    for (const row of rows)
+      if (row.parent !== undefined)
+        throw new Error(
+          `Term "${row.slug}" names a parent, but taxonomy ` +
+            `"${taxonomy.name}" is not hierarchical. WordPress refuses this ` +
+            "too — rest_taxonomy_not_hierarchical.",
+        );
+
+  /** Outermost ancestor first. Throws on an unknown or looping parent. */
+  const ancestorsOf = (row: TaxonomyTermRow): TaxonomyTermRow[] => {
+    const chain: TaxonomyTermRow[] = [];
+    const seen = new Set<string>([row.slug]);
+    let current = row;
+    while (current.parent !== undefined) {
+      const parent = bySlug.get(current.parent);
+      if (parent === undefined)
+        throw new Error(
+          `Term "${row.slug}" in "${taxonomy.name}" names parent ` +
+            `"${current.parent}", which is not a term of that taxonomy.`,
+        );
+      if (seen.has(parent.slug))
+        throw new Error(
+          `Term "${row.slug}" in "${taxonomy.name}" has a parent chain that ` +
+            `loops through "${parent.slug}".`,
+        );
+      seen.add(parent.slug);
+      chain.unshift(parent);
+      current = parent;
+    }
+    return chain;
+  };
+
+  return { bySlug, ancestorsOf };
+}
 
 /**
  * Resolve the whole route table for one locale.
@@ -543,22 +634,36 @@ export function resolveSiteRoutes<
   archive("posts", postsIndex, indexPage?.data.title ?? "Blog", posts, {
     indexPage,
   });
-  for (const term of sources.categories)
-    archive(
-      "category",
-      categoryPath(term.slug),
-      nameFor(term, locale, locale),
-      posts.filter((post) => post.data.categories.includes(term.slug)),
-      { term },
-    );
-  for (const term of sources.tags)
-    archive(
-      "tag",
-      tagPath(term.slug),
-      nameFor(term, locale, locale),
-      posts.filter((post) => (post.data.tags ?? []).includes(term.slug)),
-      { term },
-    );
+  // WordPress's own two taxonomies, through the SAME rules as a configured one:
+  // duplicate slugs throw, a parent on a flat taxonomy throws, an unknown or
+  // looping parent throws, and a hierarchical taxonomy's archive URL carries
+  // its ancestors. `coreTaxonomies()` derives both profiles from `permalinks`,
+  // so an existing configuration produces the URLs it always did — and a
+  // category tree that was flat before still is, because it had no way to be
+  // anything else.
+  const termHrefs = new Map<string, string>();
+  for (const taxonomy of coreTaxonomies()) {
+    const rows =
+      taxonomy.name === "category" ? sources.categories : sources.tags;
+    const { ancestorsOf } = indexTerms(taxonomy, rows);
+    for (const term of rows) {
+      const base = termPath(
+        taxonomy,
+        term.slug,
+        ancestorsOf(term).map((one) => one.slug),
+      );
+      termHrefs.set(`${taxonomy.name}/${term.slug}`, paginatedPath(base, 1));
+      archive(
+        taxonomy.name === "category" ? "category" : "tag",
+        base,
+        nameFor(term, locale, locale),
+        posts.filter((post) =>
+          termsOf(taxonomy, post.data).includes(term.slug),
+        ),
+        { term },
+      );
+    }
+  }
   for (const author of sources.authors)
     archive(
       "author",
@@ -628,53 +733,32 @@ export function resolveSiteRoutes<
     // a disambiguation WordPress does not have: `wp_unique_term_slug()` refuses
     // a slug that already exists in the SAME taxonomy, appending a parent
     // suffix or a number. Two terms sharing one slug here would share one URL.
-    const bySlug = new Map<string, TaxonomyTermRow>();
-    for (const row of rows) {
-      const existing = bySlug.get(row.slug);
-      if (existing !== undefined)
-        throw new Error(
-          `Taxonomy "${taxonomy.name}" has two terms with slug "${row.slug}". ` +
-            "WordPress does not allow that — wp_unique_term_slug() makes a " +
-            "colliding slug unique within its taxonomy — so one of these did " +
-            "not come from the source site, or the capture lost the suffix.",
-        );
-      bySlug.set(row.slug, row);
-    }
+    const { bySlug, ancestorsOf } = indexTerms(taxonomy, rows);
 
-    /** Outermost ancestor first. Throws on an unknown or looping parent. */
-    const ancestorsOf = (row: TaxonomyTermRow): TaxonomyTermRow[] => {
-      const chain: TaxonomyTermRow[] = [];
-      const seen = new Set<string>([row.slug]);
-      let current = row;
-      while (current.parent !== undefined) {
-        const parent = bySlug.get(current.parent);
-        if (parent === undefined)
+    // A term an entry names that the registry does not have.
+    //
+    // Nothing checked this before, at any layer: the content contract does not
+    // read the `terms` map out of front matter, and the archive simply did not
+    // list the entry — so a typo in a taxonomy term made a product quietly
+    // vanish from the listing it belonged in, with every gate green.
+    //
+    // Checked HERE because this is the earliest layer that holds both sides:
+    // `sources.custom` carries every entry in EVERY locale (the locale filter
+    // is applied below, not before), and `rows` is the whole registry.
+    for (const collection of taxonomy.appliesTo) {
+      for (const entry of sources.custom?.[collection] ?? []) {
+        for (const named of entry.data.terms?.[taxonomy.name] ?? []) {
+          if (bySlug.has(named)) continue;
           throw new Error(
-            `Term "${row.slug}" in "${taxonomy.name}" names parent ` +
-              `"${current.parent}", which is not a term of that taxonomy.`,
+            `Entry "${collection}/${entry.data.slug}" files itself under ` +
+              `${taxonomy.name} term "${named}", which is not in ` +
+              `content/${taxonomy.collection}.json. The term archive would ` +
+              `simply not list it, so seed the registry rather than removing ` +
+              `the reference.`,
           );
-        if (seen.has(parent.slug))
-          throw new Error(
-            `Term "${row.slug}" in "${taxonomy.name}" has a parent chain that ` +
-              `loops through "${parent.slug}".`,
-          );
-        seen.add(parent.slug);
-        chain.unshift(parent);
-        current = parent;
+        }
       }
-      return chain;
-    };
-
-    // A parent on a flat taxonomy is data the URL model cannot express, and
-    // silently ignoring it would file a term somewhere the source did not.
-    if (!taxonomy.hierarchical)
-      for (const row of rows)
-        if (row.parent !== undefined)
-          throw new Error(
-            `Term "${row.slug}" names a parent, but taxonomy ` +
-              `"${taxonomy.name}" is not hierarchical. WordPress refuses this ` +
-              "too — rest_taxonomy_not_hierarchical.",
-          );
+    }
 
     routedTerms[taxonomy.collection] = taxonomy.published ? [...rows] : [];
     if (!taxonomy.published) continue;
@@ -753,9 +837,11 @@ export function resolveSiteRoutes<
     authorOf: (slug) => authorsBySlug.get(slug),
     categoryOf: (slug) => categoriesBySlug.get(slug),
     tagOf: (slug) => tagsBySlug.get(slug),
+    termHref: (taxonomy, slug) => termHrefs.get(`${taxonomy}/${slug}`),
     custom: routedCustom,
     postTypes,
     taxonomies,
+    allTaxonomies: [...coreTaxonomies(), ...userTaxonomies(taxonomies)],
     terms: routedTerms,
   };
 }

@@ -8,6 +8,7 @@ publishedAt: 2026-01-15
 author: jane-doe
 categories:
   - news
+  - releases
 tags:
   - sample
 source:

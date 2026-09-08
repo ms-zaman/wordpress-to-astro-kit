@@ -27,7 +27,7 @@ import {
 } from "../rendering/post-view.ts";
 import { findOverride, seoMetadata } from "../rendering/seo-model.ts";
 import { SITE_NAME, siteOrigin } from "../rendering/site-identity.ts";
-import { authorPath, categoryPath, tagPath } from "../routing/permalink.ts";
+import { authorPath } from "../routing/permalink.ts";
 import { nameFor, type PostRoute } from "../routing/resolver.ts";
 import type { PostEntry, SiteData } from "../routing/site-routes.ts";
 
@@ -59,12 +59,16 @@ const label = (
 const categories = data.categories.map((slug) => ({
   slug,
   label: label(slug, site.categoryOf(slug)),
-  href: categoryPath(slug),
+  // The resolver's href, not a freshly computed one: a category may be nested,
+  // and its archive then lives under its parent. Computing the URL from a slug
+  // alone produced `/category/releases` for an archive published at
+  // `/category/news/releases` — a link to a page that does not exist.
+  href: site.termHref("category", slug) ?? "",
 }));
 const tags = (data.tags ?? []).map((slug) => ({
   slug,
   label: label(slug, site.tagOf(slug)),
-  href: tagPath(slug),
+  href: site.termHref("post_tag", slug) ?? "",
 }));
 const primary = categories[0];
 

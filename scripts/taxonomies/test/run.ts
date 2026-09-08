@@ -142,12 +142,24 @@ const termRoutes = <T extends { kind: string }>(routes: readonly T[]) =>
 
 console.log("\nPermalinks: one token, because WordPress expands one");
 
-check("A TAXONOMY PATTERN TAKES %term% AND NOTHING ELSE", () => {
+check("A TAXONOMY PATTERN TAKES ONE TERM TOKEN, UNDER EITHER NAME", () => {
   // Measured: `get_term_link()` builds `<base>/%<taxonomy>%` and replaces that
-  // single token with either the slug or the ancestor path.
-  equal(TAXONOMY_TOKENS.length, 1, "one token");
-  equal(TAXONOMY_TOKENS[0], "term", "and it is %term%");
+  // single token with either the slug or the ancestor path. ONE token, and it
+  // has two spellings here for one reason: `%term%` is what a configured
+  // taxonomy writes, and `%slug%` is what every kit configuration has written
+  // in `permalinks.category` since before core taxonomies had a profile. They
+  // are synonyms, expanded to the same value, so unifying the two models
+  // required nobody to edit a pattern they already had.
+  equal(TAXONOMY_TOKENS.length, 2, "two spellings");
+  assert(TAXONOMY_TOKENS.includes("term"), "%term%");
+  assert(TAXONOMY_TOKENS.includes("slug"), "and %slug%");
   equal(taxonomyProblems(taxonomy()).length, 0, "the ordinary profile is fine");
+  equal(
+    taxonomyProblems(taxonomy({ permalink: "/product-category/%slug%/" }))
+      .length,
+    0,
+    "and the core spelling is accepted for a configured taxonomy too",
+  );
 });
 
 check("A %parent% TOKEN IS REFUSED, AND POINTS AT THE RIGHT KNOB", () => {

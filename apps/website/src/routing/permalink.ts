@@ -12,6 +12,11 @@ import {
   type TaxonomyProfile,
 } from "../../../../migration.config.ts";
 import { routeKey, sitePath } from "./url-shape.ts";
+import {
+  coreTaxonomies,
+  CORE_TAXONOMY_NAMES,
+  type ResolvedTaxonomy,
+} from "./taxonomies.ts";
 
 export const permalinks: Permalinks = migration.permalinks;
 
@@ -26,8 +31,13 @@ export const PATTERN_TOKENS: Readonly<
 > = {
   post: ["postname", "year", "monthnum", "day", "category", "author"],
   page: ["pagename"],
-  category: ["slug"],
-  tag: ["slug"],
+  // `%term%` is a synonym for `%slug%` here, and both are accepted so that one
+  // vocabulary covers every taxonomy: `%term%` is what a configured taxonomy's
+  // pattern uses, and `%slug%` is what every existing kit configuration has
+  // written since before core taxonomies had a profile. Neither is preferred
+  // by the code; changing an existing pattern is never required.
+  category: ["slug", "term"],
+  tag: ["slug", "term"],
   author: ["nicename"],
 };
 
@@ -142,12 +152,25 @@ export function pagePath(slug: string, parentSlugs: readonly string[]): string {
   });
 }
 
-export function categoryPath(slug: string): string {
-  return expandPattern(permalinks.category, { slug });
+/**
+ * The URL a category archive is published at.
+ *
+ * `ancestorSlugs` because a WordPress category is hierarchical AND its rewrite
+ * is hierarchical (measured — see `routing/taxonomies.ts`), so the archive of a
+ * child category lives under its parent: `/category/electronics/laptops/`.
+ * Defaulting to none keeps every existing call and every existing URL exactly
+ * as it was; a flat category tree cannot notice this parameter exists.
+ */
+export function categoryPath(
+  slug: string,
+  ancestorSlugs: readonly string[] = [],
+): string {
+  return termPath(coreTaxonomies()[0]!, slug, ancestorSlugs);
 }
 
+/** The URL a tag archive is published at. `post_tag` is flat, both ways. */
 export function tagPath(slug: string): string {
-  return expandPattern(permalinks.tag, { slug });
+  return termPath(coreTaxonomies()[1]!, slug);
 }
 
 export function authorPath(nicename: string): string {
@@ -297,7 +320,7 @@ export function customTypeArchivePath(profile: PostTypeProfile): string {
  * token — a `%parent%` token would be a shape WordPress has no equivalent for,
  * and inventing it would let a profile describe a URL the source never served.
  */
-export const TAXONOMY_TOKENS: readonly string[] = ["term"];
+export const TAXONOMY_TOKENS: readonly string[] = ["term", "slug"];
 
 /** Everything wrong with one taxonomy profile. */
 export function taxonomyProblems(profile: TaxonomyProfile): string[] {
@@ -326,7 +349,9 @@ export function taxonomyProblems(profile: TaxonomyProfile): string[] {
               "expands to the ancestor path, which is what get_term_link() does."
             : "WordPress's own term permastruct expands exactly one token."),
       );
-  if (!tokens.includes("term"))
+  // Either spelling counts. `%slug%` is the one every existing configuration
+  // wrote in `permalinks.category`, and the two expand to the same value.
+  if (!tokens.some((token) => TAXONOMY_TOKENS.includes(token)))
     problems.push(
       `${where}.permalink has no %term%, so every term would share one URL`,
     );
@@ -365,7 +390,14 @@ export function taxonomyProfileProblems(
       .filter((one) => one.published)
       .map((one) => [one.collection, one]),
   );
-  const known = new Set(postTypes.map((one) => one.collection));
+  // `posts` is the core post type's collection. It is not in `postTypes` —
+  // that list is for CUSTOM types — and a taxonomy attached to posts is the
+  // most ordinary thing WordPress has, so naming it must be allowed.
+  const CORE_POSTS = "posts";
+  const known = new Set([
+    CORE_POSTS,
+    ...postTypes.map((one) => one.collection),
+  ]);
 
   for (const profile of taxonomies) {
     if (seenNames.has(profile.name))
@@ -384,9 +416,21 @@ export function taxonomyProfileProblems(
     if (CORE_TAXONOMIES.has(profile.name))
       problems.push(
         `taxonomies["${profile.name}"] is one of WordPress's core taxonomies, ` +
-          `which this kit models directly through content/categories.json, ` +
-          `content/tags.json and permalinks.category / permalinks.tag. Remove ` +
-          `the profile and configure the pattern there.`,
+          `which this kit models itself — see routing/taxonomies.ts, whose ` +
+          `profile is derived from permalinks.${profile.name === "category" ? "category" : "tag"} ` +
+          `and content/${profile.name === "category" ? "categories" : "tags"}.json. ` +
+          `A second profile for it would give one registry two identities. ` +
+          `Configure the URL in permalinks.`,
+      );
+
+    // `builtIn` is the kit's word for "WordPress registers this one", and a
+    // configuration cannot award it to itself: the core profiles are derived,
+    // never read from here, so a profile claiming the flag would be describing
+    // something that is not true of it.
+    if ((profile as { builtIn?: unknown }).builtIn !== undefined)
+      problems.push(
+        `taxonomies["${profile.name}"] declares \`builtIn\`, which only ` +
+          `WordPress's own category and post_tag are. Remove it.`,
       );
 
     // A taxonomy that files entries of a type nobody publishes produces an
@@ -398,7 +442,11 @@ export function taxonomyProfileProblems(
             `is not a postTypes collection. Name the collection, not the ` +
             `WordPress type key.`,
         );
-      else if (profile.published && !published.has(collection))
+      else if (
+        collection !== CORE_POSTS &&
+        profile.published &&
+        !published.has(collection)
+      )
         problems.push(
           `taxonomies["${profile.name}"] is published and files "${collection}", ` +
             `whose post type is not. Its archives would list pages that do not ` +
@@ -411,8 +459,8 @@ export function taxonomyProfileProblems(
   return problems;
 }
 
-/** WordPress's own two, which the kit models without a profile. */
-const CORE_TAXONOMIES = new Set(["category", "post_tag"]);
+/** WordPress's own two, which the kit derives rather than reads from config. */
+const CORE_TAXONOMIES = new Set<string>(CORE_TAXONOMY_NAMES);
 
 /**
  * The URL one term is published at.
@@ -422,13 +470,17 @@ const CORE_TAXONOMIES = new Set(["category", "post_tag"]);
  * exactly the branch `get_term_link()` takes on `rewrite['hierarchical']`.
  */
 export function termPath(
-  profile: TaxonomyProfile,
+  profile: TaxonomyProfile | ResolvedTaxonomy,
   slug: string,
   ancestorSlugs: readonly string[] = [],
 ): string {
-  return expandPattern(profile.permalink, {
-    term: profile.urlHierarchy ? [...ancestorSlugs, slug].join("/") : slug,
-  });
+  const value = profile.urlHierarchy
+    ? [...ancestorSlugs, slug].join("/")
+    : slug;
+  // Both spellings, one value. `%term%` and `%slug%` are synonyms so that core
+  // and configured taxonomies share this function without anybody having to
+  // rewrite a pattern they already have.
+  return expandPattern(profile.permalink, { term: value, slug: value });
 }
 
 /** Where the posts listing lives. */

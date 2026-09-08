@@ -303,3 +303,105 @@ test.describe("lineage — intended entity to browser-visible page", () => {
     expect((await page.goto(first.path))?.status()).toBe(200);
   });
 });
+
+test.describe("taxonomy archives — core and configured, one model", () => {
+  /** Every route the manifest publishes for one taxonomy collection. */
+  const routesOf = (collection: string) =>
+    manifest.routes.inventory.filter((route) =>
+      route.entry?.startsWith(`${collection}/`),
+    );
+
+  test("A NESTED CORE CATEGORY IS SERVED UNDER ITS PARENT", async ({
+    page,
+  }) => {
+    // WordPress registers `category` with `rewrite['hierarchical'] => true`, so
+    // a child category's archive lives under its parent. The kit could not
+    // represent that at all until core and custom taxonomies shared one model:
+    // `categorySchema` had no `parent` field.
+    const nested = routesOf("categories").find((route) =>
+      /^\/category\/[^/]+\/[^/]+$/.test(route.path),
+    );
+    test.skip(nested === undefined, "this build has no nested category");
+
+    const response = await page.goto(nested!.path);
+    expect(response?.status(), `nested category at ${nested!.path}`).toBe(200);
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+
+    // Not merely a 200: the archive must actually list a post, and that post's
+    // route must be one the manifest also claims.
+    const claimed = new Set(
+      manifest.routes.inventory
+        .filter((route) => route.origin === "post")
+        .map((route) => route.path),
+    );
+    const hrefs = await page
+      .locator("main a[href]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLAnchorElement).getAttribute("href")!),
+      );
+    expect(
+      hrefs
+        .map((href) => href.replace(/\/+$/, ""))
+        .filter((href) => claimed.has(href)),
+      "the nested archive lists its posts",
+    ).not.toEqual([]);
+  });
+
+  test("A POST LINKS ITS NESTED CATEGORY AT THE URL THAT EXISTS", async ({
+    page,
+  }) => {
+    // The regression this catches: `PostPage` computed the link from the slug
+    // alone, which produced `/category/releases` for an archive published at
+    // `/category/news/releases`. Every gate was green and the link was a 404.
+    const nested = routesOf("categories").find((route) =>
+      /^\/category\/[^/]+\/[^/]+$/.test(route.path),
+    );
+    test.skip(nested === undefined, "this build has no nested category");
+
+    const postRoute = manifest.routes.inventory.find(
+      (route) => route.origin === "post",
+    )!;
+    await page.goto(postRoute.path);
+
+    const hrefs = await page
+      .locator("a[href^='/category/']")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLAnchorElement).getAttribute("href")!),
+      );
+    const published = new Set(
+      routesOf("categories").map((route) => route.path),
+    );
+    for (const href of hrefs)
+      expect(
+        published.has(href.replace(/\/+$/, "")),
+        `${href} is a published archive`,
+      ).toBe(true);
+  });
+
+  test("core and configured term archives are the same kind of page", async ({
+    page,
+  }) => {
+    // One model, two vocabularies. Both must render a heading and both must be
+    // claimed by exactly one registry row.
+    const core = routesOf("categories")[0];
+    const configured = manifest.routes.inventory.find(
+      (route) => route.origin === "taxonomy-archive",
+    );
+    test.skip(
+      core === undefined || configured === undefined,
+      "this build has no taxonomy pair to compare",
+    );
+
+    for (const route of [core!, configured!]) {
+      const response = await page.goto(route.path);
+      expect(response?.status(), route.path).toBe(200);
+      await expect(
+        page.getByRole("heading", { level: 1 }).first(),
+        route.path,
+      ).toBeVisible();
+      expect(
+        manifest.routes.inventory.filter((one) => one.path === route.path),
+      ).toHaveLength(1);
+    }
+  });
+});

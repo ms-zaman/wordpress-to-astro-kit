@@ -13,11 +13,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import {
-  authorSchema,
-  categorySchema,
-  tagSchema,
-} from "../src/content-model/registries.ts";
+import { authorSchema } from "../src/content-model/registries.ts";
+import { allTaxonomies } from "../src/routing/taxonomies.ts";
 import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
 import { migration } from "../../../migration.config.ts";
 import { collectionOwnershipIssues } from "../src/content-model/ownership.ts";
@@ -126,37 +123,27 @@ assertUnique(
 );
 console.log(`  authors:        ${authors.length} rows`);
 
-const categories = validateRegistry("categories.json", categorySchema);
-assertUnique(
-  "categories.json",
-  "slug",
-  categories.map((row) => row.slug),
-);
-console.log(`  categories:     ${categories.length} rows`);
-
-const tags = validateRegistry("tags.json", tagSchema);
-assertUnique(
-  "tags.json",
-  "slug",
-  tags.map((row) => row.slug),
-);
-console.log(`  tags:           ${tags.length} rows`);
-
 // ---------------------------------------------------------------------------
-// Custom taxonomy registries.
+// Every taxonomy registry, core and configured, through ONE loop.
 //
-// Read here, from the FILE, and not only through Astro. Measured: adding a
-// second term with slug `laptops` to one registry produced a green build in
-// which Astro's `file()` loader had keyed the rows by slug and silently kept
-// ONE of them. The route for the first was gone, the manifest listed one term,
-// intended and emitted agreed, and `content:integrity` reported nothing —
-// because the duplicate never survived long enough for the resolver's own
-// check to see it.
+// WordPress's `category` and `post_tag` used to be validated by hand here while
+// configured taxonomies had a profile-driven loop of their own — so core
+// categories got a duplicate-slug check and nothing else. They had no `parent`
+// field to check, which is exactly the gap: a WordPress category IS
+// hierarchical (measured — see src/routing/taxonomies.ts), and the kit could
+// not represent one.
 //
-// That is the third time this kit has met the same shape: a loader assigning
-// identity from content, and content that legitimately repeats. The filesystem
-// is the only authority that sees both rows.
-for (const taxonomy of migration.taxonomies) {
+// Read from the FILE, and not only through Astro. Measured: adding a second
+// term with slug `laptops` to one registry produced a green build in which
+// Astro's `file()` loader had keyed the rows by slug and silently kept ONE of
+// them. The route for the first was gone, the manifest listed one term,
+// intended and emitted agreed, and `content:integrity` reported nothing.
+//
+// That is the shape this kit has met repeatedly: a loader assigning identity
+// from content, and content that legitimately repeats. The filesystem is the
+// only authority that sees both rows.
+const termsByCollection = new Map<string, string[]>();
+for (const taxonomy of allTaxonomies()) {
   const file = `${taxonomy.collection}.json`;
   const terms = validateRegistry(file, taxonomyTermSchema);
   assertUnique(
@@ -165,6 +152,7 @@ for (const taxonomy of migration.taxonomies) {
     terms.map((row) => row.slug),
   );
   const slugs = new Set(terms.map((row) => String(row.slug)));
+  termsByCollection.set(taxonomy.collection, [...slugs]);
   for (const row of terms) {
     if (row.parent === undefined) continue;
     if (!taxonomy.hierarchical)
@@ -177,12 +165,18 @@ for (const taxonomy of migration.taxonomies) {
         `${file}: term "${String(row.slug)}" names parent ` +
           `"${String(row.parent)}", which is not a term in this registry.`,
       );
+    else if (String(row.parent) === String(row.slug))
+      note(`${file}: term "${String(row.slug)}" is its own parent.`);
   }
   console.log(
     `  ${`${taxonomy.name}:`.padEnd(15)} ${terms.length} term(s)` +
+      `${taxonomy.builtIn ? " (WordPress's own)" : ""}` +
       `${taxonomy.published ? "" : " (stored only)"}`,
   );
 }
+
+const categories = termsByCollection.get("categories") ?? [];
+const tags = termsByCollection.get("tags") ?? [];
 
 const seoOverrides = validateRegistry("seo/overrides.json", seoOverrideSchema);
 assertUnique(
@@ -203,8 +197,8 @@ try {
 
 const tree = validateContentTree(contentRoot, {
   authors: authors.map((row) => row.slug as string),
-  categories: categories.map((row) => row.slug as string),
-  tags: tags.map((row) => row.slug as string),
+  categories,
+  tags,
 });
 
 for (const problem of tree.problems) note(problem);

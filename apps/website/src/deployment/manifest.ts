@@ -39,9 +39,18 @@ export interface PostTypeRecord {
   readonly taxonomies: readonly string[];
 }
 
-/** One custom taxonomy, as this build treated it. */
+/** One taxonomy — WordPress's own or configured — as this build treated it. */
 export interface TaxonomyRecord {
   readonly name: string;
+  /**
+   * True for WordPress's `category` and `post_tag`.
+   *
+   * Recorded because the two are semantically different even though they share
+   * an implementation: a built-in is derived from `permalinks`, cannot be
+   * withheld, and its terms live in the registries the kit has always shipped.
+   * A reader that could not tell them apart would have to guess from the name.
+   */
+  readonly builtIn: boolean;
   readonly collection: string;
   readonly published: boolean;
   /** The post-type collections its terms file. */

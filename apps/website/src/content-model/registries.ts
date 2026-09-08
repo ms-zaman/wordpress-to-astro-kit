@@ -12,7 +12,8 @@
 // the point: an unstated origin and a deliberate one used to look identical.
 import { z } from "astro/zod";
 
-import { entityProvenance, localizedName, mediaRef, slug } from "./shared.ts";
+import { entityProvenance, mediaRef, slug } from "./shared.ts";
+import { taxonomyTermSchema } from "./taxonomy-term.ts";
 
 /**
  * Author registry — WordPress users who published something.
@@ -44,14 +45,14 @@ export const authorSchema = z.strictObject({
   source: entityProvenance,
 });
 
-export const categorySchema = z.strictObject({
-  slug,
-  name: localizedName,
-  source: entityProvenance,
-});
-
-export const tagSchema = z.strictObject({
-  slug,
-  name: localizedName,
-  source: entityProvenance,
-});
+/**
+ * Category and tag registries — WordPress's `category` and `post_tag` terms.
+ *
+ * Aliases for `taxonomyTermSchema`, and that is the unification: these two used
+ * to be a schema of their own with no `parent` field, so a nested category —
+ * which WordPress has by default — could not be represented and was silently
+ * flattened. The names are kept because they say which registry a caller
+ * means, and `routing/taxonomies.ts` carries the semantics that differ.
+ */
+export const categorySchema = taxonomyTermSchema;
+export const tagSchema = taxonomyTermSchema;

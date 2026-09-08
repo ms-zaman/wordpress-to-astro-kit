@@ -26,6 +26,15 @@
 // tags registries this kit already has: a term is one thing with a name in
 // each language, not one thing per language.
 //
+// ## One schema for every taxonomy, core included
+//
+// This IS the schema behind `content/categories.json` and `content/tags.json`.
+// They used to have one of their own — `categorySchema`, which had no `parent`
+// at all — and a WordPress category is hierarchical (measured: see
+// `routing/taxonomies.ts`), so the kit could not represent a nested category
+// and had to flatten one. The files did not move and their consumers did not
+// change; the model behind them did.
+//
 // ## One vocabulary for provenance, not two
 //
 // The term id used to live here as a bare `sourceId: number`, while
@@ -36,14 +45,9 @@
 // entity uses. Nothing read the old field, so nothing was lost in the change.
 import { z } from "astro/zod";
 
-import { entityProvenance, localeCode, slug } from "./shared.ts";
+import { entityProvenance, localeCode, localizedName, slug } from "./shared.ts";
 
-/**
- * A per-locale string that must at least cover the default locale.
- *
- * Reuses the rule the core registries use, so a custom taxonomy behaves like
- * `categories.json` rather than like a second, subtly different thing.
- */
+/** A per-locale string, for a field that need not be translated at all. */
 const localised = z.partialRecord(localeCode, z.string().min(1));
 
 export const taxonomyTermSchema = z.strictObject({
@@ -56,7 +60,15 @@ export const taxonomyTermSchema = z.strictObject({
    * gives `parent` as an id; the capture resolves it.
    */
   parent: slug.optional(),
-  name: localised,
+  /**
+   * The display name, per locale, and the default locale is required.
+   *
+   * The rule `categories.json` and `tags.json` always had, now applied to every
+   * taxonomy: a term with no name in the language the site builds has nothing
+   * to put in a heading, a breadcrumb or a title, and falling back to the slug
+   * turns a missing translation into a page that looks finished.
+   */
+  name: localizedName,
   description: localised.optional(),
   /**
    * Where this term came from — including `wp_terms.term_id` when it came
