@@ -175,7 +175,14 @@ export function classifyTaxonomies(
         capability === "core" || capability === "internal"
           ? []
           : taxonomy.types.filter(
-              (type) => type !== "post" && !publishedTypes.has(type),
+              // `post` AND `page`. Both are core types this kit publishes
+              // unconditionally, and `publishedTypes` holds only the CUSTOM
+              // profiles — so a taxonomy registered against `page`, which is
+              // an ordinary plugin pattern, was reported as unroutable when
+              // pages are the one thing that always routes. A false gap in a
+              // report whose whole value is that its gaps are real.
+              (type) =>
+                type !== "post" && type !== "page" && !publishedTypes.has(type),
             ),
     };
   });

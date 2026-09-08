@@ -300,6 +300,39 @@ export function identifyAsset(
   };
 }
 
+/**
+ * The media profile with the live origin folded into the migratable hosts.
+ *
+ * ONE derivation, because there were two and they disagreed. `liveOrigin` is
+ * by definition the source site: a reference to `https://<liveOrigin>/…` in
+ * the uploads namespace is that site's own library, whether or not anybody
+ * remembered to repeat the host in `media.migrateFrom`.
+ *
+ * Measured before this existed: `rendering/media.ts` folded it in, while the
+ * `mediaRef` schema and the whole capture pipeline did not — so a stranger who
+ * ran `pnpm kit:init --live-origin https://theirs.example` and captured a
+ * `featuredImage` on that host got it classified EXTERNAL and REFUSED by the
+ * content contract, on a configuration `kit:init` itself had written.
+ *
+ * A fresh clone has no `liveOrigin`, so nothing is folded in and an unedited
+ * kit still reaches out to nobody.
+ */
+export function resolveMediaProfile(
+  profile: MediaProfile,
+  liveOrigin: string | undefined,
+): MediaProfile {
+  if (liveOrigin === undefined || liveOrigin.trim() === "") return profile;
+  let host: string;
+  try {
+    host = new URL(liveOrigin).host;
+  } catch {
+    return profile;
+  }
+  return profile.migrateFrom.map(hostKey).includes(hostKey(host))
+    ? profile
+    : { ...profile, migrateFrom: [...profile.migrateFrom, host] };
+}
+
 /** The asset classes this engine migrates. */
 export const MIGRATED_CLASSES: readonly AssetClass[] = [
   "SUPPORTED",

@@ -35,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import {
   isMigrated,
   outputFileFor,
+  resolveMediaProfile,
   type AssetClass,
   type AssetIdentity,
 } from "../../apps/website/src/media/asset-identity.ts";
@@ -56,7 +57,10 @@ const args = parseArgs(process.argv.slice(2), {
   defaultCommand: "discover",
 });
 
-const profile = migration.media;
+// The same derivation the schema and the render path use: `liveOrigin` is the
+// source site, so its uploads are this migration's whether or not the host was
+// repeated in `media.migrateFrom`.
+const profile = resolveMediaProfile(migration.media, migration.liveOrigin);
 const contentRoot = path.resolve(
   repositoryRoot,
   args.value("--content", "content"),

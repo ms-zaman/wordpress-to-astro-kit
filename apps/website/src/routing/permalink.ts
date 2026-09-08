@@ -107,6 +107,29 @@ export function permalinkProblems(config: Permalinks = permalinks): string[] {
       );
     TOKEN.lastIndex = 0;
   }
+  // A pattern the engine would silently override.
+  //
+  // `sitePath` gives the whole site ONE URL shape — a trailing slash, because
+  // that is what WordPress publishes by default — and it applies to every
+  // route regardless of what the pattern here says. So a slashless pattern is
+  // a setting that reads as a decision and is not one: the build publishes
+  // `/foo/` whatever it says, and the divergence was invisible.
+  //
+  // Refused rather than warned, because URL preservation is the one thing a
+  // migration cannot get wrong quietly. If your source really serves slashless
+  // URLs, the shape lives in `routing/url-shape.ts` and changing it there
+  // changes every link, canonical, sitemap row and redirect target together.
+  for (const [name, pattern] of Object.entries(config).filter(
+    ([key]) => key in PATTERN_TOKENS,
+  ) as [string, string][])
+    if (!pattern.endsWith("/") && !/\.[a-z0-9]{2,5}$/i.test(pattern))
+      problems.push(
+        `permalinks.${name} is "${pattern}", which has no trailing slash — and ` +
+          `the site publishes one URL shape, with one. The build would emit ` +
+          `"${pattern}/" and this setting would describe a shape nobody serves. ` +
+          `Add the slash, or change the shape in routing/url-shape.ts.`,
+      );
+
   if (!config.postsIndex.startsWith("/"))
     problems.push(`permalinks.postsIndex must start with "/"`);
   if (!/^[a-z0-9-]+$/.test(config.paginationSegment))

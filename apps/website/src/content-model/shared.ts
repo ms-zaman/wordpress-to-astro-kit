@@ -7,7 +7,7 @@ import { z } from "astro/zod";
 
 import localeRegistryData from "../../../../content/config/locales.json" with { type: "json" };
 import { migration } from "../../../../migration.config.ts";
-import { identifyAsset } from "../media/asset-identity.ts";
+import { identifyAsset, resolveMediaProfile } from "../media/asset-identity.ts";
 
 /**
  * A locale code, in the form an `<html lang>` attribute takes.
@@ -188,8 +188,10 @@ export const bodyFormat = z.enum(["html", "markdown"]).default("html");
  * A body may reference another site's uploads freely; this is `featuredImage`,
  * `avatar` and `ogImage`, which somebody chose.
  */
+const mediaProfile = resolveMediaProfile(migration.media, migration.liveOrigin);
+
 const assetProblem = (url: string): string | undefined => {
-  const identity = identifyAsset(url, migration.media);
+  const identity = identifyAsset(url, mediaProfile);
   if (
     identity.classification === "SUPPORTED" ||
     identity.classification === "CONFIGURED"
@@ -199,7 +201,7 @@ const assetProblem = (url: string): string | undefined => {
   if (identity.classification === "EXTERNAL") {
     if (!/^https:\/\//i.test(url))
       return "an external media URL must be https://";
-    const uploads = `/${migration.media.uploadsPath.replace(/^\/+|\/+$/g, "")}/`;
+    const uploads = `/${mediaProfile.uploadsPath.replace(/^\/+|\/+$/g, "")}/`;
     if (url.includes(uploads))
       return (
         `it is in the uploads namespace on a host \`media.migrateFrom\` does ` +

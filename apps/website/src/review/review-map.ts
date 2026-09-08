@@ -117,14 +117,39 @@ export interface CoveredRoute {
   readonly kind: string;
 }
 
-const coverageOf = (origin: string): RouteCoverage | undefined =>
-  origin === "static"
-    ? "static"
-    : origin === "page" || origin === "post"
-      ? origin
-      : origin === "archive" || origin === "pagination"
-        ? "archive"
-        : undefined;
+/**
+ * Which review row a route's origin belongs to.
+ *
+ * Every member of `RouteOrigin` is mapped, and that is the point: `custom`,
+ * `custom-archive` and `taxonomy-archive` used to fall through to `undefined`
+ * and be skipped, so a site whose content is mostly a `docs` or `product` type
+ * — exactly the case custom-type support exists for — got a CLEAN coverage
+ * report while most of its pages had no review row at all. A silent skip in a
+ * coverage gate is the failure mode a coverage gate exists to prevent.
+ *
+ * A custom-type entry reviews like a `post` (one entry, one page) and both
+ * listings review like an `archive` (a paginated index). `redirect` is not a
+ * page anybody reviews — it is a meta-refresh stub — and it is excluded before
+ * this is reached, by the `kind !== "page"` guard.
+ */
+const coverageOf = (origin: string): RouteCoverage | undefined => {
+  switch (origin) {
+    case "static":
+      return "static";
+    case "page":
+      return "page";
+    case "post":
+    case "custom":
+      return "post";
+    case "archive":
+    case "pagination":
+    case "custom-archive":
+    case "taxonomy-archive":
+      return "archive";
+    default:
+      return undefined;
+  }
+};
 
 /** Routes the map does not cover, and rows that cover nothing. */
 export function coverageGaps(routes: readonly CoveredRoute[]): {

@@ -15,7 +15,7 @@
 // `mediaUrl` rewrites the ORIGIN of a preserved reference and nothing else.
 // Nothing here fetches anything.
 import { migration, type MediaProfile } from "../../../../migration.config.ts";
-import { identifyAsset } from "../media/asset-identity.ts";
+import { identifyAsset, resolveMediaProfile } from "../media/asset-identity.ts";
 import { processEnvironment } from "../deployment/site-environment.ts";
 
 export const MEDIA_ORIGIN_KEY = "WPK_MEDIA_ORIGIN";
@@ -45,15 +45,10 @@ export const LIVE_MEDIA_ORIGIN: string | undefined =
  */
 const ASCII_SPACE = /[ \t\r\n\f\v]+/;
 
-const ORIGIN_PROFILE: MediaProfile = {
-  ...migration.media,
-  migrateFrom: [
-    ...migration.media.migrateFrom,
-    ...(LIVE_MEDIA_ORIGIN === undefined
-      ? []
-      : [new URL(LIVE_MEDIA_ORIGIN).host]),
-  ],
-};
+const ORIGIN_PROFILE: MediaProfile = resolveMediaProfile(
+  migration.media,
+  migration.liveOrigin,
+);
 
 /**
  * The classification of a reference for the ORIGIN strategy, or undefined when
