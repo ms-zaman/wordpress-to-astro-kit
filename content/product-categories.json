@@ -1,27 +1,50 @@
 [
   {
     "slug": "electronics",
-    "name": { "en": "Electronics", "pt-BR": "Eletrônicos" },
+    "name": {
+      "en": "Electronics",
+      "pt-BR": "Eletrônicos"
+    },
     "description": {
       "en": "Powered things, and the cables that come with them."
+    },
+    "source": {
+      "system": "sample"
     }
   },
   {
     "slug": "laptops",
     "parent": "electronics",
-    "name": { "en": "Laptops" },
-    "description": { "en": "Portable computers, filed under electronics." }
+    "name": {
+      "en": "Laptops"
+    },
+    "description": {
+      "en": "Portable computers, filed under electronics."
+    },
+    "source": {
+      "system": "sample"
+    }
   },
   {
     "slug": "furniture",
-    "name": { "en": "Furniture" }
+    "name": {
+      "en": "Furniture"
+    },
+    "source": {
+      "system": "sample"
+    }
   },
   {
     "slug": "laptop-stands",
     "parent": "furniture",
-    "name": { "en": "Laptop stands" },
+    "name": {
+      "en": "Laptop stands"
+    },
     "description": {
       "en": "Filed under furniture, not under electronics — and its URL says so."
+    },
+    "source": {
+      "system": "sample"
     }
   }
 ]

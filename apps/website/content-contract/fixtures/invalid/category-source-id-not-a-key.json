@@ -3,7 +3,7 @@
   "name": { "en": "News" },
   "source": {
     "system": "wordpress",
-    "sourceId": "3",
+    "sourceId": "news",
     "capturedAt": "2026-01-16"
   }
 }

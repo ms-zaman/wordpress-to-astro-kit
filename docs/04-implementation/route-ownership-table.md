@@ -33,4 +33,21 @@ Every route is static, so none needs an adapter or a hosting decision.
 `hosting.provider` are `null`, and the rendering contract fails if either
 stops being.
 
+**`/deployment.json` is served, and it describes your migration.** It lists
+every content identity, every collection, every custom post type and taxonomy
+key, every withheld entity, and — since provenance — the **source site's
+primary keys**: the WordPress post, term and user ids each entity came from.
+None of that is secret (a live WordPress install publishes its ids through
+`?p=` and its REST API), and none of it is a credential, but it is a
+description of the site you migrated FROM and nobody asked you whether it
+should be public.
+
+It is a route like any other, so the decision is yours and it costs one
+deletion: remove `src/pages/deployment.json.ts` and the manifest stops being
+published. The gates do not depend on the route — they read the file out of
+`dist/`, and deleting the module removes it from `dist/` too, which is what
+makes this a real choice rather than a toggle. If you want the gates and not
+the exposure, exclude the file at the point of deploy instead; the route
+inventory names it, so it is one line in a deploy filter.
+
 **Indexing is the launch switch, not a per-route property.**

@@ -60,6 +60,7 @@ for a build the run never loaded. So a busy port is a fatal, named error, and
 | [`custom-types/`](custom-types/)               | What the kit can and cannot do with a WordPress custom post type — the capability boundary, stated                                            |
 | [`taxonomies/`](taxonomies/)                   | What the kit can and cannot do with a WordPress taxonomy — measured against core, stated as a boundary                                        |
 | [`identity/`](identity/)                       | Identity is not a slug: where uniqueness and ownership are enforced, and what happens on a collision                                          |
+| [`provenance/`](provenance/)                   | Where did this page come from? Source entity → content entry → route → output, and the twelve mutations that break the chain                  |
 | [`preview-audit/`](preview-audit/)             | Is this ARTIFACT whole — every promised route emitted, every link resolving, every asset present, no undeclared script?                       |
 | [`accessibility-audit/`](accessibility-audit/) | Heading outlines, landmark sets, list semantics, focus coverage, the skip link's target, the navigation, and the contrast of every token pair |
 | [`seo-audit/`](seo-audit/)                     | Does every page carry the head a crawler needs, and does that head agree with the page?                                                       |

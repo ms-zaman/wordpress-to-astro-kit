@@ -16,8 +16,16 @@ import { processEnvironment } from "../deployment/site-environment.ts";
 import {
   customArchiveIdentity,
   identityOf,
+  POSTS_INDEX_IDENTITY,
 } from "../routing/route-identity.ts";
 import { entryId, rowId } from "../deployment/content-identity.ts";
+import {
+  provenanceOfDerived,
+  provenanceOfEntity,
+  typeVocabulary,
+  type Provenance,
+} from "../content-model/provenance.ts";
+import { migration } from "../../../../migration.config.ts";
 import type { IntendedContent } from "../deployment/content-integrity.ts";
 import { loadSiteData } from "../routing/site-routes.ts";
 import {
@@ -77,6 +85,42 @@ function safePath(compute: () => string): string | undefined {
   }
 }
 
+/**
+ * The collection → WordPress type table for THIS configuration.
+ *
+ * Built once per manifest rather than per row, and built from the profiles
+ * rather than written out: a type added to `migration.config.ts` gets a source
+ * identity without a second edit, and a profile REMOVED leaves its collection
+ * unknown — so the entity gets no source identity and is reported, instead of
+ * the artifact inventing a type key for content nothing owns any more.
+ */
+const vocabulary = typeVocabulary(migration);
+
+/**
+ * The provenance of one local entity, or the honest failure to state it.
+ *
+ * `provenanceOfEntity` returns nothing for a collection the vocabulary does not
+ * know. That case is already a hard failure at the content contract (an
+ * unclaimed directory), and the manifest still has to say something rather than
+ * silently drop the row: an `authored` record with the collection named keeps
+ * the entity in the intended set, where the integrity gate can see it.
+ */
+function provenanceFor(input: {
+  local: string;
+  collection: string;
+  locale?: string;
+  source?: { system: string; sourceId?: string; capturedAt?: string };
+}): Provenance {
+  return (
+    provenanceOfEntity({ ...input, vocabulary }) ?? {
+      local: input.local,
+      origin: "authored",
+      collection: input.collection,
+      ...(input.locale === undefined ? {} : { locale: input.locale }),
+    }
+  );
+}
+
 export const GET: APIRoute = async () => {
   const site = await loadSiteData();
   const [navigation] = await Promise.all([getCollection("navigation")]);
@@ -128,24 +172,51 @@ export const GET: APIRoute = async () => {
           authorNicename: site.authorOf(post.data.author)?.nicename,
         }),
       ),
+      provenance: provenanceFor({
+        local: entryId("posts", post.data.slug, post.data.locale),
+        collection: "posts",
+        locale: post.data.locale,
+        source: post.data.source,
+      }),
     })),
     ...site.allPages.map((page) => ({
       id: entryId("pages", page.data.slug, page.data.locale),
       // The parent chain is unknown for an entry the resolver never routed,
       // so this hint is the flat path. It is a hint, not a claim.
       expectedRoute: safePath(() => pagePath(page.data.slug, [])),
+      provenance: provenanceFor({
+        local: entryId("pages", page.data.slug, page.data.locale),
+        collection: "pages",
+        locale: page.data.locale,
+        source: page.data.source,
+      }),
     })),
     ...site.categories.map((row) => ({
       id: rowId("categories", row.slug),
       expectedRoute: safePath(() => categoryPath(row.slug)),
+      provenance: provenanceFor({
+        local: rowId("categories", row.slug),
+        collection: "categories",
+        source: row.source,
+      }),
     })),
     ...site.tags.map((row) => ({
       id: rowId("tags", row.slug),
       expectedRoute: safePath(() => tagPath(row.slug)),
+      provenance: provenanceFor({
+        local: rowId("tags", row.slug),
+        collection: "tags",
+        source: row.source,
+      }),
     })),
     ...site.authors.map((row) => ({
       id: rowId("authors", row.slug),
       expectedRoute: safePath(() => authorPath(row.nicename ?? row.slug)),
+      provenance: provenanceFor({
+        local: rowId("authors", row.slug),
+        collection: "authors",
+        source: row.source,
+      }),
     })),
     // Custom post types. Every profile's entries, in EVERY locale and whether
     // or not the profile publishes them — which is the whole point: a type the
@@ -157,6 +228,16 @@ export const GET: APIRoute = async () => {
         expectedRoute: profile.published
           ? safePath(() => customTypePath(profile, entry.data))
           : undefined,
+        provenance: provenanceFor({
+          local: entryId(
+            profile.collection,
+            entry.data.slug,
+            entry.data.locale,
+          ),
+          collection: profile.collection,
+          locale: entry.data.locale,
+          source: entry.data.source,
+        }),
       })),
       // The listing, when the profile declares one. Structural like the posts
       // index: derived from the whole collection, not from one entry.
@@ -165,6 +246,17 @@ export const GET: APIRoute = async () => {
             {
               id: customArchiveIdentity(profile.collection),
               expectedRoute: safePath(() => customTypeArchivePath(profile)),
+              // Derived: no WordPress entity produces a listing, the PROFILE
+              // does. Inventing a post id for it would put a number in the
+              // artifact that matches nothing on the source site.
+              provenance: provenanceOfDerived(
+                customArchiveIdentity(profile.collection),
+                {
+                  kind: "type-archive",
+                  collection: profile.collection,
+                  declaredBy: `postTypes["${profile.name}"].archive`,
+                },
+              ),
             },
           ]
         : []),
@@ -188,8 +280,35 @@ export const GET: APIRoute = async () => {
               ),
             )
           : undefined,
+        provenance: provenanceFor({
+          local: rowId(taxonomy.collection, term.slug),
+          collection: taxonomy.collection,
+          source: term.source,
+        }),
       })),
     ),
+    // The posts listing, when no page supplies its title.
+    //
+    // Named as intended rather than waved through as an `@`-prefixed
+    // structural route. The difference matters: a structural identity used to
+    // be an EXEMPTION in the integrity gate — anything starting with `@` was
+    // skipped — and an exemption is exactly how a route becomes unattributable
+    // by accident. Modelled explicitly, it is a derived entity with a stated
+    // origin, and the gate joins it like everything else.
+    ...(site.postsArchive === undefined ||
+    site.postsArchive.indexPage !== undefined
+      ? []
+      : [
+          {
+            id: POSTS_INDEX_IDENTITY,
+            expectedRoute: site.postsArchive.base,
+            provenance: provenanceOfDerived(POSTS_INDEX_IDENTITY, {
+              kind: "posts-index" as const,
+              collection: "posts",
+              declaredBy: "permalinks.postsIndex",
+            }),
+          },
+        ]),
   ];
 
   const manifest = buildManifest({

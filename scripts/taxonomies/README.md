@@ -70,9 +70,16 @@ label qualifies the title and description so the two pages do not collide.
 nothing. A term archive is never created merely because terms exist.
 
 **Terms** carry `slug`, `parent`, per-locale `name`, per-locale `description`,
-and an optional `sourceId`. Those are exactly the REST fields that are content;
-`count` and `link` are facts about the source at capture time and stay in the
-capture.
+and a required `source` block — the same one every other source entity uses,
+holding `wp_terms.term_id` as `sourceId`. Those are exactly the REST fields that
+are content; `count` and `link` are facts about the source at capture time and
+stay in the capture.
+
+The term id is what survives a slug being edited on the source site, which is
+the one thing a slug cannot do — so a re-capture matches on it, and
+[`pnpm provenance`](../provenance/README.md) answers which term produced a given
+term archive. A term registry written by hand says `{ "system": "authored" }`
+and is then honest about having no source entity behind it.
 
 ## UNSUPPORTED — and what happens instead
 

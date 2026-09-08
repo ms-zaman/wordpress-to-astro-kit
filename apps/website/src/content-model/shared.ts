@@ -119,6 +119,34 @@ export const provenance = z
     },
   );
 
+/**
+ * Provenance for a SOURCE ENTITY — a post, a page, a term, a user.
+ *
+ * The same block, with one more rule: a WordPress-sourced entity records its
+ * WordPress primary key, and those are positive integers. `wp_posts.ID`,
+ * `wp_terms.term_id` and `wp_users.ID` are all `bigint(20) unsigned`, so a
+ * slug, a URL or a path in this field names nothing on the source site — and
+ * the whole value of a source identity is that it survives a slug being
+ * edited, which a slug obviously cannot.
+ *
+ * Bare `provenance` stays loose because two content sets that are NOT source
+ * entities use it: an SEO override row is keyed by URL, and a navigation menu
+ * is a `wp_term_taxonomy` row for `nav_menu` whose items are not entities of
+ * this content tree. Those keep a free-form capture key on purpose.
+ */
+export const entityProvenance = provenance.refine(
+  (value) =>
+    value.system !== "wordpress" || /^[1-9][0-9]*$/.test(value.sourceId ?? ""),
+  {
+    message:
+      "a WordPress source entity is identified by its primary key, a positive " +
+      "integer (wp_posts.ID, wp_terms.term_id, wp_users.ID). A slug or a URL " +
+      "here is not a stable identity: it changes when somebody renames the " +
+      "thing, which is the exact case a source id exists to survive.",
+    path: ["sourceId"],
+  },
+);
+
 /** How a body is rendered: WordPress's HTML verbatim (the default), or Markdown. */
 export const bodyFormat = z.enum(["html", "markdown"]).default("html");
 
@@ -200,7 +228,7 @@ export const entryBase = {
   locale: localeCode,
   cluster: clusterKey,
   updatedAt: isoDate,
-  source: provenance,
+  source: entityProvenance,
 };
 
 /**

@@ -37,12 +37,13 @@
 // exclusion has to be declared, has to give a reason, and has to match
 // something — a rule that excludes nothing is a rule somebody forgot to
 // delete, and it is reported too.
+import { kindOf, localeOf, type ContentId } from "./content-identity.ts";
+import { claimOf } from "./route-inventory.ts";
 import {
-  kindOf,
-  localeOf,
-  type ContentId,
-  type ContentKind,
-} from "./content-identity.ts";
+  contestedSourceEntities,
+  provenanceProblems,
+  type Provenance,
+} from "../content-model/provenance.ts";
 
 /**
  * A reason an intended entry legitimately produces no page.
@@ -62,14 +63,6 @@ export type ExclusionReason =
    */
   | "locale-not-built"
   /**
-   * The entry is routed, but at a path the permalink pattern does not
-   * describe: the front page, and the page that supplies the posts listing's
-   * title. WordPress does the same thing, and the page is emitted — this is a
-   * REMAPPING, not a withholding, and it is listed as an exclusion only
-   * because the naive `slug -> permalink` expectation does not hold for it.
-   */
-  | "routed-elsewhere"
-  /**
    * The entry belongs to a post type whose profile says `published: false`.
    *
    * Different from having no profile at all, and the difference is the point:
@@ -88,9 +81,44 @@ export type ExclusionReason =
    */
   | "taxonomy-not-published";
 
+/**
+ * The pipeline boundary an exclusion is decided at.
+ *
+ * ONE member, today, and that is a measured statement rather than an oversight:
+ * every legitimate exclusion this kit makes is made by the route resolver,
+ * which sees the entity and publishes nothing for it. Nothing is excluded at
+ * the loader — `content.config.ts` defines a collection for every profile,
+ * published or not, precisely so a withheld type's entries still load and can
+ * still be named.
+ *
+ * The type exists anyway, because a reason and a stage answer different
+ * questions: "why was it withheld" and "where do I go to change that". A second
+ * boundary that starts withholding things has to declare itself here rather
+ * than borrow the resolver's name — which is what a union of one buys, and an
+ * untyped string would not.
+ *
+ * `routed-elsewhere` was a reason in this vocabulary until provenance was
+ * traced end to end and it turned out nothing produced it: the front page and
+ * the page that titles the posts listing are both EMITTED, carrying their
+ * identity onto `/` and onto the listing's route. A reason nothing can
+ * produce is the same lie as a config field nothing reads.
+ */
+export type ExclusionStage = "resolver";
+
 export interface Exclusion {
   readonly id: ContentId;
   readonly reason: ExclusionReason;
+  /** Where in the pipeline the decision was taken. */
+  readonly stage: ExclusionStage;
+  /**
+   * The configuration responsible — `postTypes["internal-note"].published`,
+   * `content/config/locales.json`.
+   *
+   * An exclusion that cannot name what decided it is a rule nobody can
+   * change, and Part 9 of the provenance contract is that a withheld entity
+   * is as traceable as a published one.
+   */
+  readonly by: string;
   /** What a person reading the report needs in order to agree with it. */
   readonly detail: string;
 }
@@ -100,6 +128,16 @@ export interface IntendedContent {
   readonly id: ContentId;
   /** Where a reader would expect to find it, when that is knowable. */
   readonly expectedRoute?: string;
+  /**
+   * Where it came from.
+   *
+   * REQUIRED, and that is the point: an entity whose origin nothing states is
+   * an entity nobody can trace, re-capture or reconcile, and "we do not know"
+   * has to be spelled `origin: "authored"` rather than left blank. A manifest
+   * row without one is reported, because JSON cannot be made to carry a
+   * TypeScript requirement and a manifest may come from any build.
+   */
+  readonly provenance: Provenance;
 }
 
 /** One page this build actually emitted, as the manifest records it. */
@@ -110,10 +148,9 @@ export interface EmittedRoute {
   readonly entry?: ContentId;
   /** `static`, `redirect`, `page`, `post`, `archive`, `pagination`. */
   readonly origin: string;
+  /** The route module, for a static route's claim. */
+  readonly source?: string;
 }
-
-/** Route origins that legitimately have no content behind them. */
-const CONTENT_FREE_ORIGINS = new Set(["static", "redirect"]);
 
 /**
  * A route whose source is the site's structure rather than one entry.
@@ -130,7 +167,11 @@ export type FindingKind =
   | "OUTPUT_ONLY"
   | "UNUSED_EXCLUSION"
   /** Two intended entities share one identity, or one identity two routes. */
-  | "IDENTITY_CONTESTED";
+  | "IDENTITY_CONTESTED"
+  /** An entity or a route whose origin nothing states — see provenance.ts. */
+  | "PROVENANCE_MISSING"
+  /** Two local entities claim one source entity. */
+  | "PROVENANCE_CONTESTED";
 
 export interface IntegrityFinding {
   readonly kind: FindingKind;
@@ -145,6 +186,9 @@ export interface IntegrityFinding {
 export interface ExcludedRecord {
   readonly id: ContentId;
   readonly reason: ExclusionReason;
+  /** The boundary that decided it, and the configuration that says so. */
+  readonly stage: ExclusionStage;
+  readonly by: string;
   readonly detail: string;
 }
 
@@ -226,6 +270,49 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
           "that apart from there only ever having been one.",
       });
 
+  // Provenance. Two rules, and both are about a thing that is PRESENT and
+  // unattributable rather than a thing that went missing — which is why no
+  // other check in this gate can see either of them.
+  //
+  //   1. every intended entity states an origin
+  //   2. no source entity is claimed by two local identities
+  //
+  // The second is the one nothing else could ever catch: two entries carrying
+  // WordPress post 42 have different slugs, different routes and different
+  // output files, so identity, route and output uniqueness all pass, and one
+  // of the two is still not the thing it says it is.
+  for (const intent of input.intended) {
+    if (intent.provenance === undefined) {
+      findings.push({
+        kind: "PROVENANCE_MISSING",
+        subject: intent.id,
+        detail:
+          "the manifest names it as intended and says nothing about where it " +
+          "came from. An entity with no stated origin cannot be re-captured, " +
+          'reconciled, or traced back to a source site — write `"authored"` if ' +
+          "it genuinely has no WordPress entity behind it.",
+      });
+      continue;
+    }
+    for (const problem of provenanceProblems(intent.provenance))
+      findings.push({
+        kind: "PROVENANCE_MISSING",
+        subject: intent.id,
+        detail: problem,
+      });
+  }
+
+  for (const contested of contestedSourceEntities(
+    input.intended
+      .filter((intent) => intent.provenance !== undefined)
+      .map((intent) => ({ provenance: intent.provenance, by: intent.id })),
+  ))
+    findings.push({
+      kind: "PROVENANCE_CONTESTED",
+      subject: contested.key,
+      detail: contested.detail,
+    });
+
   const emittedIds = new Map<ContentId, EmittedRoute>();
   const routesPerIdentity = new Map<ContentId, string[]>();
   for (const route of input.emitted) {
@@ -304,6 +391,8 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
       excluded.push({
         id: intent.id,
         reason: exclusion.reason,
+        stage: exclusion.stage,
+        by: exclusion.by,
         detail: exclusion.detail,
       });
       continue;
@@ -326,27 +415,36 @@ export function checkContentIntegrity(input: IntegrityInput): IntegrityReport {
   // Every emitted page must be explicable. A page nobody asked for is as much
   // a defect as a page that went missing — it is content the site publishes
   // that no source describes, which is what a stale build directory looks like.
+  //
+  // Attribution is asked as a TOTAL question — `claimOf` — rather than as a
+  // content check with two origins exempted. A set called CONTENT_FREE_ORIGINS
+  // used to skip `static` and `redirect`, which is true and also meant a route
+  // became unattributable simply by claiming to be one of them. Now a static
+  // route is claimed by its module and a redirect by its rule, and having no
+  // claimant at all is the finding.
   const intendedIds = new Set(input.intended.map((intent) => intent.id));
   for (const route of input.emitted) {
-    if (CONTENT_FREE_ORIGINS.has(route.origin)) continue;
-    if (route.entry !== undefined && isStructural(route.entry)) continue;
-    if (route.entry === undefined) {
+    const claim = claimOf(route);
+    if (claim === undefined) {
       findings.push({
         kind: "OUTPUT_ONLY",
         subject: route.path,
         detail:
-          `a "${route.origin}" route carries no content identity, so nothing ` +
-          "can say which entry it came from. Every content-derived route must " +
-          "name its source.",
+          `a "${route.origin}" route has no claimant: it names no content ` +
+          "identity, no route module and no redirect rule, so nothing can say " +
+          "what this page is. Every emitted output is attributable to exactly " +
+          "one owner.",
         expectedOutput: route.file,
       });
       continue;
     }
-    if (!intendedIds.has(route.entry))
+    if (claim.by !== "content") continue;
+    if (isStructural(claim.local)) continue;
+    if (!intendedIds.has(claim.local))
       findings.push({
         kind: "OUTPUT_ONLY",
         subject: route.path,
-        detail: `emitted from "${route.entry}", which content/ does not intend.`,
+        detail: `emitted from "${claim.local}", which content/ does not intend.`,
         expectedOutput: route.file,
       });
   }
@@ -416,6 +514,8 @@ export function unpublishedTypeExclusions(
     excluded.push({
       id: intent.id,
       reason: "type-not-published",
+      stage: "resolver",
+      by: `postTypes["${type}"].published`,
       detail:
         `post type "${type}" has a profile in migration.config.ts with ` +
         `published: false. Its entries are captured, validated and named here, ` +
@@ -448,6 +548,8 @@ export function unpublishedTaxonomyExclusions(
     excluded.push({
       id: intent.id,
       reason: "taxonomy-not-published",
+      stage: "resolver",
+      by: `taxonomies["${taxonomy}"].published`,
       detail:
         `taxonomy "${taxonomy}" has a profile in migration.config.ts with ` +
         `published: false. Its terms are stored on entries and rendered as ` +
@@ -477,6 +579,8 @@ export function localeExclusions(
     excluded.push({
       id: intent.id,
       reason: "locale-not-built",
+      stage: "resolver",
+      by: "content/config/locales.json — defaultLocale",
       detail:
         `locale "${locale}"; this build publishes "${builtLocale}". The kit ` +
         "routes one language at a time and chooses no URL strategy for the " +

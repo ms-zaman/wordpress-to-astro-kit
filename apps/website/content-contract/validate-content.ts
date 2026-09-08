@@ -21,6 +21,12 @@ import {
 import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
 import { migration } from "../../../migration.config.ts";
 import { collectionOwnershipIssues } from "../src/content-model/ownership.ts";
+import {
+  provenanceOfEntity,
+  sourceIdentityIssues,
+  typeVocabulary,
+  type SourceClaimant,
+} from "../src/content-model/provenance.ts";
 import { seoOverrideSchema } from "../src/content-model/seo-override.ts";
 import { localeRegistry } from "../src/content-model/shared.ts";
 import { parseRedirectMap } from "../src/deployment/redirects.ts";
@@ -62,6 +68,38 @@ const validateRegistry = (
         );
   });
   return rows as Array<Record<string, unknown>>;
+};
+
+/**
+ * Registry rows, as provenance claims.
+ *
+ * Collected across EVERY registry and checked once at the end, rather than per
+ * file: two authors both claiming WordPress user 7 is a collision, and so is
+ * one taxonomy holding two terms with `term_id` 42. Neither is visible to the
+ * slug-uniqueness check beside it, because the slugs differ — that is the whole
+ * shape of a provenance collision.
+ */
+const rowClaims: SourceClaimant[] = [];
+const vocabulary = typeVocabulary(migration);
+
+const claimRows = (
+  relativePath: string,
+  collection: string,
+  rows: readonly Record<string, unknown>[],
+): void => {
+  for (const row of rows) {
+    const provenance = provenanceOfEntity({
+      local: `${collection}/${String(row.slug)}`,
+      collection,
+      source: row.source as { system: string; sourceId?: string } | undefined,
+      vocabulary,
+    });
+    if (provenance !== undefined)
+      rowClaims.push({
+        provenance,
+        by: `${relativePath} "${String(row.slug)}"`,
+      });
+  }
 };
 
 const assertUnique = (
@@ -124,6 +162,7 @@ assertUnique(
   "nicename",
   authors.map((row) => row.nicename ?? row.slug),
 );
+claimRows("authors.json", "authors", authors);
 console.log(`  authors:        ${authors.length} rows`);
 
 const categories = validateRegistry("categories.json", categorySchema);
@@ -132,6 +171,7 @@ assertUnique(
   "slug",
   categories.map((row) => row.slug),
 );
+claimRows("categories.json", "categories", categories);
 console.log(`  categories:     ${categories.length} rows`);
 
 const tags = validateRegistry("tags.json", tagSchema);
@@ -140,6 +180,7 @@ assertUnique(
   "slug",
   tags.map((row) => row.slug),
 );
+claimRows("tags.json", "tags", tags);
 console.log(`  tags:           ${tags.length} rows`);
 
 // ---------------------------------------------------------------------------
@@ -159,6 +200,7 @@ console.log(`  tags:           ${tags.length} rows`);
 for (const taxonomy of migration.taxonomies) {
   const file = `${taxonomy.collection}.json`;
   const terms = validateRegistry(file, taxonomyTermSchema);
+  claimRows(file, taxonomy.collection, terms);
   assertUnique(
     file,
     "slug",
@@ -215,6 +257,10 @@ console.log(
 );
 
 for (const issue of tree.issues) note(`[${issue.code}] ${issue.message}`);
+
+// One source entity, one local entity — across every registry at once.
+for (const issue of sourceIdentityIssues(rowClaims))
+  note(`[${issue.code}] ${issue.message}`);
 
 const samples = sampleEntries(contentRoot);
 console.log(`  sample content: ${samples.length} item(s)`);

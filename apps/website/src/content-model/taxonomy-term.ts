@@ -11,9 +11,9 @@
 // Of those, four are content and three are not:
 //
 //   * `name`, `slug`, `description`, `parent` — what a term IS. Kept.
-//   * `id` — the SOURCE's primary key. Kept as `sourceId`, optional, because
-//     it is the only thing that survives a slug being edited on the source
-//     site and it is what a re-capture matches on. It is never a URL.
+//   * `id` — the SOURCE's primary key (`wp_terms.term_id`). Kept, because it
+//     is the only thing that survives a slug being edited on the source site
+//     and it is what a re-capture matches on. It is never a URL.
 //   * `count` — a fact about the source's database at capture time, not about
 //     this build. The archive counts its own entries.
 //   * `link` — the source's URL. It belongs in the CAPTURE, where it is
@@ -25,9 +25,18 @@
 // `name` and `description` are per-locale maps, matching the categories and
 // tags registries this kit already has: a term is one thing with a name in
 // each language, not one thing per language.
+//
+// ## One vocabulary for provenance, not two
+//
+// The term id used to live here as a bare `sourceId: number`, while
+// `categories.json` and `tags.json` — the SAME concept, a taxonomy term —
+// recorded theirs inside a `source` block. Two shapes for one idea is how the
+// kit's other identity defects started, so both now use `entityProvenance`:
+// the system, the id, and the capture date, in the shape every other source
+// entity uses. Nothing read the old field, so nothing was lost in the change.
 import { z } from "astro/zod";
 
-import { localeCode, slug } from "./shared.ts";
+import { entityProvenance, localeCode, slug } from "./shared.ts";
 
 /**
  * A per-locale string that must at least cover the default locale.
@@ -50,13 +59,15 @@ export const taxonomyTermSchema = z.strictObject({
   name: localised,
   description: localised.optional(),
   /**
-   * The source site's term id.
+   * Where this term came from — including `wp_terms.term_id` when it came
+   * from WordPress.
    *
-   * Optional, and never used to build a URL. It exists so a re-capture can
-   * recognise a term whose slug or name was edited on the source — the one
-   * thing a slug cannot do.
+   * Required, like every other source entity's: a term whose origin nothing
+   * states is a term nothing can re-capture, reconcile, or trace back to the
+   * site it was taken from. `{ "system": "authored" }` is the honest answer
+   * for a term written here.
    */
-  sourceId: z.number().int().positive().optional(),
+  source: entityProvenance,
 });
 
 export type TaxonomyTerm = z.infer<typeof taxonomyTermSchema>;

@@ -41,6 +41,7 @@ import {
   type PostEntryData,
   type TaxonomyTermRow,
 } from "../../../apps/website/src/routing/resolver.ts";
+import type { Provenance } from "../../../apps/website/src/content-model/provenance.ts";
 import type {
   PostTypeProfile,
   TaxonomyProfile,
@@ -398,9 +399,25 @@ check("TWO ROUTES NORMALISING TO ONE FILE ARE DETECTED", () => {
 
 console.log("\nDefence in depth — the gate no longer deduplicates");
 
+/** Provenance for a fixture: enough to be valid, never the thing under test. */
+const authored = (local: string, locale?: string): Provenance => ({
+  local,
+  origin: "authored",
+  collection: local.split("/")[0]!,
+  ...(locale === undefined ? {} : { locale }),
+});
+
 const baseIntended: IntendedContent[] = [
-  { id: "pages/home@en", expectedRoute: "/" },
-  { id: "products/analyser@en", expectedRoute: "/products/analyser/" },
+  {
+    id: "pages/home@en",
+    expectedRoute: "/",
+    provenance: authored("pages/home@en", "en"),
+  },
+  {
+    id: "products/analyser@en",
+    expectedRoute: "/products/analyser/",
+    provenance: authored("products/analyser@en", "en"),
+  },
 ];
 const baseEmitted: EmittedRoute[] = [
   { path: "/", file: "index.html", origin: "static", entry: "pages/home@en" },
@@ -418,7 +435,14 @@ check("TWO INTENDED ENTRIES WITH ONE IDENTITY ARE REPORTED", () => {
   // check, two intended entries with one identity collapsed to one key,
   // matched the one emitted route, and reported ZERO findings.
   const report = checkContentIntegrity({
-    intended: [...baseIntended, { id: "pages/home@en", expectedRoute: "/" }],
+    intended: [
+      ...baseIntended,
+      {
+        id: "pages/home@en",
+        expectedRoute: "/",
+        provenance: authored("pages/home@en", "en"),
+      },
+    ],
     emitted: baseEmitted,
     exclusions: [],
     filesInDist: baseFiles,
@@ -453,7 +477,12 @@ check("a paginated listing spanning several paths is NOT a contest", () => {
   // The distinction that makes the check above usable: an archive
   // legitimately spans pages and shares one identity.
   const report = checkContentIntegrity({
-    intended: [{ id: "product-categories/laptops" }],
+    intended: [
+      {
+        id: "product-categories/laptops",
+        provenance: authored("product-categories/laptops"),
+      },
+    ],
     emitted: [
       {
         path: "/product-category/laptops",

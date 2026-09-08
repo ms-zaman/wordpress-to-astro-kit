@@ -20,7 +20,11 @@ export interface ValidationIssue {
     /** Two files produce one content identity — see ownership.ts. */
     | "entry-identity-contested"
     /** Two owners claim one collection. */
-    | "collection-ownership-contested";
+    | "collection-ownership-contested"
+    /** Two local entities claim one source entity — see provenance.ts. */
+    | "source-identity-contested"
+    /** A local entity whose origin nothing states. */
+    | "provenance-missing";
   message: string;
 }
 

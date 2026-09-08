@@ -252,3 +252,53 @@ export function duplicatePaths(routes: readonly InventoryRoute[]): string[] {
   }
   return [...duplicates].sort();
 }
+
+// ---------------------------------------------------------------------------
+// Claimants — no anonymous route, and no exemption dressed as one.
+// ---------------------------------------------------------------------------
+
+/**
+ * What owns a route.
+ *
+ * Every route in the inventory has exactly one of these, and the point of the
+ * union is that "static" and "redirect" stop being EXEMPTIONS and become
+ * answers. The content-integrity gate used to skip those two origins with a
+ * set called `CONTENT_FREE_ORIGINS`, which is true and also means a route
+ * could be unattributable simply by claiming to be static.
+ *
+ * Now the question is total: a route either names the content it publishes,
+ * the module that renders it, or the rule that retired it — and `undefined` is
+ * a finding rather than a category.
+ */
+export type RouteClaim =
+  /** Published from an entry or a registry row. */
+  | { readonly by: "content"; readonly local: ContentId }
+  /** Rendered by a route module of its own — `/`, `/search`, `/404`, the JSON endpoints. */
+  | { readonly by: "module"; readonly module: string }
+  /** A retired URL, from a rule in `content/redirects.json`. */
+  | { readonly by: "redirect"; readonly from: string };
+
+/**
+ * The claimant of one route, or `undefined` when it has none.
+ *
+ * `undefined` happens for exactly one shape: a content-derived route whose
+ * identity was never attached. That is a real defect — a page nothing can be
+ * asked about — and it is the one case Part 7 of the provenance contract
+ * refuses to let pass as "probably this entry".
+ */
+export function claimOf(route: {
+  readonly path: string;
+  readonly origin: string;
+  readonly entry?: ContentId;
+  readonly source?: string;
+}): RouteClaim | undefined {
+  if (route.origin === "redirect") return { by: "redirect", from: route.path };
+  if (route.entry !== undefined) return { by: "content", local: route.entry };
+  if (
+    route.origin === "static" &&
+    route.source !== undefined &&
+    route.source !== ""
+  )
+    return { by: "module", module: route.source };
+  return undefined;
+}

@@ -77,6 +77,7 @@ let manifest: {
       path: string;
       file: string;
       origin: string;
+      source?: string;
       entry?: string;
     }[];
   };
@@ -171,12 +172,14 @@ if (report.excluded.length > 0) {
   process.stdout.write("\n  EXCLUDED\n");
   for (const record of report.excluded)
     process.stdout.write(
-      `    ${record.id}\n      reason: ${record.reason}\n      ${record.detail}\n`,
+      `    ${record.id}\n      reason: ${record.reason} (at the ${record.stage}, by ${record.by})\n      ${record.detail}\n`,
     );
 }
 
 for (const kind of [
   "IDENTITY_CONTESTED",
+  "PROVENANCE_CONTESTED",
+  "PROVENANCE_MISSING",
   "SOURCE_ONLY",
   "OUTPUT_ONLY",
   "UNUSED_EXCLUSION",

@@ -346,6 +346,34 @@ at once*. Put the uniqueness check there — for content that is the filesystem,
 not the loaded collection. [scripts/identity/](scripts/identity/README.md) has
 the four invariants and where each is enforced.
 
+### And the question uniqueness cannot answer
+
+Identity says *which of these are the same thing*. Ownership says *which
+collection, route and file it belongs to*. Neither says **where it came from**,
+and that is the question a person actually asks when a migrated page looks
+wrong.
+
+Keep the four names apart, because only one of them survives an edit:
+
+| | example | moves when |
+| --- | --- | --- |
+| source identity | `wp:post/product#42` | never, while the entity exists on the source |
+| local identity | `products/analyser@en` | the slug or locale changes |
+| route identity | `/products/analyser` | the slug, parent or permalink changes |
+| output identity | `products/analyser/index.html` | the route changes |
+
+Write the source's primary key into every entry you migrate — `sourceId`, and
+the kit refuses a slug or a URL in that field. It is the only key a re-capture
+can match on, and without it a renamed page reads as one page deleted and
+another invented. `pnpm provenance` then answers which WordPress entity
+produced any URL or file in the build, and
+[scripts/provenance/](scripts/provenance/README.md) states the model.
+
+Two entries carrying one WordPress id is the collision nothing else can see:
+their slugs differ, their routes differ, their output files differ, so every
+uniqueness check in the kit passes and one of them is still not the entity it
+says it is.
+
 ## What this kit deliberately does not have
 
 **A synthetic migration framework.** The original project built sixteen

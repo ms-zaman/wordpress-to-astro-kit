@@ -18,6 +18,11 @@ import { z } from "astro/zod";
 
 import { migration } from "../../../migration.config.ts";
 import { entryIdentityIssues } from "../src/content-model/ownership.ts";
+import {
+  provenanceOfEntity,
+  sourceIdentityIssues,
+  typeVocabulary,
+} from "../src/content-model/provenance.ts";
 import { clusterKey, localeCode, slug } from "../src/content-model/shared.ts";
 import {
   validateClusters,
@@ -43,6 +48,8 @@ export interface LoadedEntry {
   cluster: string;
   /** `source.system` — `wordpress`, `authored` or `sample`. */
   sourceSystem?: string;
+  /** `source.sourceId` — the WordPress primary key, for a captured entry. */
+  sourceId?: string;
   parent?: string;
   categories?: string[];
   author?: string;
@@ -175,11 +182,15 @@ export function unclaimedEntryDirectories(
   return unclaimed;
 }
 
+/** Collection → WordPress type, for this configuration. */
+const vocabulary = typeVocabulary(migration);
+
 const identityShape = {
   slug,
   locale: localeCode,
   cluster: clusterKey,
   sourceSystem: z.enum(["wordpress", "authored", "sample"]).optional(),
+  sourceId: z.string().min(1).optional(),
 };
 
 const IDENTITY_KEYS = ["slug", "locale", "cluster"] as const;
@@ -261,8 +272,14 @@ const extractFrontmatterFields = (
     const keyed = TOP_LEVEL_KEY.exec(line);
     if (!keyed) {
       const nested = NESTED_KEY.exec(line);
-      if (nested && currentKey === "source" && nested[1] === "system")
-        fields.sourceSystem = unquote(nested[2]);
+      if (nested && currentKey === "source") {
+        if (nested[1] === "system") fields.sourceSystem = unquote(nested[2]);
+        // The source id is read HERE, at the filesystem, and not only through
+        // the collection loader — because the invariant it feeds (one source
+        // entity, one local identity) can only be checked by something that
+        // sees every competing file, and a loader has already picked a winner.
+        if (nested[1] === "sourceId") fields.sourceId = unquote(nested[2]);
+      }
       continue;
     }
 
@@ -360,11 +377,16 @@ export function sampleEntries(contentRoot: string): string[] {
   for (const entry of readEntries(contentRoot).entries)
     if (entry.sourceSystem === "sample")
       labels.push(`${entry.collection}/${entry.slug}`);
+  // The configured taxonomy registries are in this list because they are
+  // content like any other: leaving them out meant a term marked
+  // `system: "sample"` would have shipped in a production build, which is the
+  // one thing this function exists to stop.
   for (const relative of [
     "authors.json",
     "categories.json",
     "tags.json",
     "seo/overrides.json",
+    ...migration.taxonomies.map((profile) => `${profile.collection}.json`),
   ])
     for (const row of registrySources(contentRoot, relative))
       if (row.system === "sample") labels.push(row.label);
@@ -401,6 +423,28 @@ export function validateContentTree(
     // tree-shaped check made the contract's own fixture trees fail for a
     // reason that had nothing to do with them. `validate-content.ts` owns it.
     ...entryIdentityIssues(entries),
+    // And the provenance form of the same invariant: two entries carrying one
+    // WordPress id. Nothing else in the pipeline can see this one — the local
+    // identities differ, the routes differ, the output files differ, so slug,
+    // route and output uniqueness all pass and one of the two entries is
+    // still not the entity it claims to be.
+    ...sourceIdentityIssues(
+      entries.flatMap((entry) => {
+        const provenance = provenanceOfEntity({
+          local: `${entry.collection}/${entry.slug}@${entry.locale}`,
+          collection: entry.collection,
+          locale: entry.locale,
+          source:
+            entry.sourceSystem === undefined
+              ? undefined
+              : { system: entry.sourceSystem, sourceId: entry.sourceId },
+          vocabulary,
+        });
+        return provenance === undefined
+          ? []
+          : [{ provenance, by: entry.file ?? provenance.local }];
+      }),
+    ),
     ...unclaimedEntryDirectories(contentRoot),
     ...unclaimedRegistryFiles(contentRoot),
     ...validateClusters(entries),

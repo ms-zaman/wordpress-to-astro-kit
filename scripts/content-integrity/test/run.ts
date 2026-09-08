@@ -22,6 +22,10 @@ import {
   localeOf,
   rowId,
 } from "../../../apps/website/src/deployment/content-identity.ts";
+import {
+  provenanceOfDerived,
+  type Provenance,
+} from "../../../apps/website/src/content-model/provenance.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -55,15 +59,52 @@ const POST = entryId("posts", "hello-world", "en");
 const PAGE = entryId("pages", "about", "en");
 const CATEGORY = rowId("categories", "news");
 
+/** A WordPress-sourced record, for the fixtures that need one. */
+const wp = (
+  local: string,
+  kind: "post" | "term" | "user",
+  type: string,
+  id: number,
+  locale?: string,
+): Provenance => ({
+  local,
+  origin: "wordpress",
+  collection: local.split("/")[0],
+  ...(locale === undefined ? {} : { locale }),
+  source: { kind, type, id, ...(locale === undefined ? {} : { locale }) },
+});
+
 const intended: IntendedContent[] = [
-  { id: POST, expectedRoute: "/hello-world/" },
-  { id: PAGE, expectedRoute: "/about/" },
-  { id: CATEGORY, expectedRoute: "/category/news/" },
+  {
+    id: POST,
+    expectedRoute: "/hello-world/",
+    provenance: wp(POST, "post", "post", 1, "en"),
+  },
+  {
+    id: PAGE,
+    expectedRoute: "/about/",
+    provenance: wp(PAGE, "post", "page", 2, "en"),
+  },
+  {
+    id: CATEGORY,
+    expectedRoute: "/category/news/",
+    provenance: wp(CATEGORY, "term", "category", 3),
+  },
 ];
 
 const emitted: EmittedRoute[] = [
-  { path: "/", file: "index.html", origin: "static" },
-  { path: "/404", file: "404.html", origin: "static" },
+  {
+    path: "/",
+    file: "index.html",
+    origin: "static",
+    source: "src/pages/index.astro",
+  },
+  {
+    path: "/404",
+    file: "404.html",
+    origin: "static",
+    source: "src/pages/404.astro",
+  },
   {
     path: "/hello-world",
     file: "hello-world/index.html",
@@ -155,11 +196,16 @@ check("A DECLARED EXCLUSION IS NOT A FAILURE", () => {
     {
       id: withheld,
       reason: "locale-not-built",
+      stage: "resolver",
+      by: "content/config/locales.json — defaultLocale",
       detail: 'locale "pt-BR"; this build publishes "en".',
     },
   ];
   const report = run({
-    intended: [...intended, { id: withheld }],
+    intended: [
+      ...intended,
+      { id: withheld, provenance: wp(withheld, "post", "page", 9, "pt-BR") },
+    ],
     exclusions,
   });
   equal(report.findings.length, 0, "no findings");
@@ -225,10 +271,7 @@ check("A CONTENT ROUTE THAT NAMES NO SOURCE IS A FAILURE", () => {
   });
   const found = findingsOfKind(report.findings, "OUTPUT_ONLY");
   equal(found.length, 1, "reported");
-  assert(
-    found[0]!.detail.includes("carries no content identity"),
-    "and says why",
-  );
+  assert(found[0]!.detail.includes("has no claimant"), "and says why");
 });
 
 check("the posts listing is structural, not orphaned", () => {

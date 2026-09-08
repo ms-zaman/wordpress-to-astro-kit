@@ -1,0 +1,16 @@
+{
+  "slug": "a-post",
+  "title": "A post",
+  "locale": "en",
+  "cluster": "posts/a-post",
+  "updatedAt": "2026-01-15",
+  "publishedAt": "2026-01-15",
+  "author": "jane-doe",
+  "categories": ["news"],
+  "tags": [],
+  "source": {
+    "system": "wordpress",
+    "sourceId": "https://example.com/a-post/",
+    "capturedAt": "2026-01-16"
+  }
+}

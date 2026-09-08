@@ -14,6 +14,7 @@ import {
   type PostTypeProfile,
   type TaxonomyProfile,
 } from "../../../../migration.config.ts";
+import type { SourceBlock } from "../content-model/provenance.ts";
 import { paginate, type PageOf } from "../content-index/pagination.ts";
 import { routeKey } from "./url-shape.ts";
 import {
@@ -34,6 +35,17 @@ import {
 } from "./permalink.ts";
 
 export interface PostEntryData {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly title: string;
   readonly locale: string;
@@ -57,6 +69,17 @@ export interface PostEntryData {
 }
 
 export interface PageEntryData {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly title: string;
   readonly locale: string;
@@ -73,6 +96,17 @@ export interface EntryLike<Data> {
 }
 
 export interface AuthorRow {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly name: string;
   readonly nicename?: string;
@@ -81,6 +115,17 @@ export interface AuthorRow {
 }
 
 export interface TermRow {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly name: Readonly<Partial<Record<string, string>>>;
 }
@@ -116,6 +161,17 @@ export type ArchiveKind = "posts" | "category" | "tag" | "author";
 
 /** An entry of a custom post type, as its collection yields one. */
 export interface CustomEntryData {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly title: string;
   readonly locale: string;
@@ -165,11 +221,21 @@ export interface CustomRoute<Custom> {
  */
 /** One term of a custom taxonomy, as its registry yields one. */
 export interface TaxonomyTermRow {
+  /**
+   * Where the entity came from — the `source` block the content model
+   * requires on every source entity.
+   *
+   * Declared here because a type that omits it makes the resolver blind to it,
+   * and that is not a hypothetical: this field WAS in the front matter and was
+   * absent from these interfaces, so nothing from the resolver onward — route,
+   * inventory, manifest, `dist/` — could say which WordPress entity a page
+   * was a page of. See content-model/provenance.ts.
+   */
+  readonly source?: SourceBlock;
   readonly slug: string;
   readonly parent?: string;
   readonly name: Readonly<Partial<Record<string, string>>>;
   readonly description?: Readonly<Partial<Record<string, string>>>;
-  readonly sourceId?: number;
 }
 
 /**

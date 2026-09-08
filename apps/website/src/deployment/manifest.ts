@@ -17,6 +17,7 @@ import {
   type EnvironmentRecord,
 } from "./build-metadata.ts";
 import type { IntendedContent } from "./content-integrity.ts";
+import { provenanceProblems } from "../content-model/provenance.ts";
 import {
   buildRouteInventory,
   countRoutes,
@@ -486,6 +487,54 @@ function validateContent(content: unknown, problem: Report): void {
       "content.entries",
       `says ${JSON.stringify(content.entries)} but the collections sum to ${total}.`,
     );
+
+  validateIntended(content.intended, problem);
+}
+
+/**
+ * Every intended entity, and the origin each one states.
+ *
+ * Checked here as well as in `content:integrity` on purpose: this validator
+ * runs inside `render:build-audit`, over a manifest that may have been written
+ * by a different version of the kit, and a manifest whose rows cannot say
+ * where they came from is not a manifest anything can trace a migration
+ * through. The TypeScript type requires `provenance`; JSON cannot, so this
+ * does.
+ */
+function validateIntended(intended: unknown, problem: Report): void {
+  if (intended === undefined) return;
+  if (!Array.isArray(intended)) {
+    problem("content.intended", "present but not an array.");
+    return;
+  }
+  intended.forEach((row, index) => {
+    const at = `content.intended[${index}]`;
+    if (!isObject(row)) {
+      problem(at, "not an object.");
+      return;
+    }
+    if (typeof row.id !== "string" || row.id === "") {
+      problem(
+        `${at}.id`,
+        `expected a content identity, got ${JSON.stringify(row.id)}.`,
+      );
+      return;
+    }
+    const { provenance } = row;
+    if (!isObject(provenance)) {
+      problem(
+        `${at}.provenance`,
+        `"${row.id}" states no origin. Every intended entity records where it ` +
+          "came from — `wordpress` with a source entity, or `authored`, " +
+          "`sample` or `derived` saying plainly that there is none.",
+      );
+      return;
+    }
+    for (const detail of provenanceProblems(
+      provenance as unknown as Parameters<typeof provenanceProblems>[0],
+    ))
+      problem(`${at}.provenance`, `"${row.id}": ${detail}`);
+  });
 }
 
 function validateHosting(hosting: unknown, problem: Report): void {

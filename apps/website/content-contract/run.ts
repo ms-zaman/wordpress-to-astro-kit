@@ -17,6 +17,7 @@ import {
   categorySchema,
   tagSchema,
 } from "../src/content-model/registries.ts";
+import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
 import { seoOverrideSchema } from "../src/content-model/seo-override.ts";
 import {
   validateClusters,
@@ -50,6 +51,7 @@ const schemaFor = (
   if (name.startsWith("author")) return authorSchema;
   if (name.startsWith("category")) return categorySchema;
   if (name.startsWith("tag")) return tagSchema;
+  if (name.startsWith("taxonomy-term")) return taxonomyTermSchema;
   if (name.startsWith("navigation")) return navigationSchema;
   if (name.startsWith("seo-override")) return seoOverrideSchema;
   return undefined;

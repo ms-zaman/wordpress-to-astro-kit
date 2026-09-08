@@ -1,5 +1,29 @@
 [
-  { "slug": "featured", "name": { "en": "Featured" } },
-  { "slug": "sale", "name": { "en": "Sale" } },
-  { "slug": "laptops", "name": { "en": "Laptops" } }
+  {
+    "slug": "featured",
+    "name": {
+      "en": "Featured"
+    },
+    "source": {
+      "system": "sample"
+    }
+  },
+  {
+    "slug": "sale",
+    "name": {
+      "en": "Sale"
+    },
+    "source": {
+      "system": "sample"
+    }
+  },
+  {
+    "slug": "laptops",
+    "name": {
+      "en": "Laptops"
+    },
+    "source": {
+      "system": "sample"
+    }
+  }
 ]
