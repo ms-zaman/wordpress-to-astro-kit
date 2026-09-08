@@ -54,6 +54,33 @@ export function textOf(html: string | undefined | null): string {
     .trim();
 }
 
+/**
+ * The word segmenter, built once.
+ *
+ * `split(/\s+/)` counts the spaces in a text, which is a word count only in a
+ * script that has spaces between words. Measured on a 4,000-character Japanese
+ * article: one "word", so `Math.max(1, …)` printed "1 min read" — on every
+ * article on the site, whatever its length. The same rule shows a Thai or
+ * Chinese article as a minute long too.
+ *
+ * `Intl.Segmenter` finds word boundaries in all of them, and leaves an English
+ * count where it was.
+ */
+const WORD_SEGMENTER =
+  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "word" })
+    : null;
+
+/** How many words a text holds, in any script. */
+export function wordCount(prose: string): number {
+  if (prose === "") return 0;
+  if (WORD_SEGMENTER === null) return prose.split(/\s+/).length;
+  let words = 0;
+  for (const piece of WORD_SEGMENTER.segment(prose))
+    if (piece.isWordLike === true) words += 1;
+  return words;
+}
+
 /** Reading time for a body, code blocks excluded. */
 export function readingTime(body: string | undefined | null): ReadingTime {
   if (typeof body !== "string") return { words: 0, minutes: 0 };
@@ -62,7 +89,7 @@ export function readingTime(body: string | undefined | null): ReadingTime {
       .replace(/<pre\b[\s\S]*?<\/pre>/gi, " ")
       .replace(/```[\s\S]*?```/g, " "),
   );
-  const words = prose === "" ? 0 : prose.split(/\s+/).length;
+  const words = wordCount(prose);
   return {
     words,
     minutes:

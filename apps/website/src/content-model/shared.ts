@@ -8,6 +8,12 @@ import { z } from "astro/zod";
 import localeRegistryData from "../../../../content/config/locales.json" with { type: "json" };
 import { migration } from "../../../../migration.config.ts";
 import { identifyAsset, resolveMediaProfile } from "../media/asset-identity.ts";
+import {
+  CLUSTER_KEY,
+  CLUSTER_KEY_MESSAGE,
+  SLUG,
+  SLUG_MESSAGE,
+} from "./slug.ts";
 
 /**
  * A locale code, in the form an `<html lang>` attribute takes.
@@ -80,19 +86,17 @@ export const isoDate = z
     value instanceof Date ? value.toISOString().slice(0, 10) : value,
   );
 
-/** URL-segment identity: immutable, extracted from the source, never derived. */
-export const slug = z
-  .string()
-  .min(1)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase kebab-case");
+/**
+ * URL-segment identity: immutable, extracted from the source, never derived.
+ *
+ * The alphabet lives in `./slug.ts` because the content transform needs the
+ * same answer and used to carry its own copy of it. Both copies described the
+ * Latin alphabet, and a site publishing in any other script lost rows to them.
+ */
+export const slug = z.string().min(1).regex(SLUG, SLUG_MESSAGE);
 
 /** Language-neutral cluster identity: `<set>/<source-slug>`. */
-export const clusterKey = z
-  .string()
-  .regex(
-    /^[a-z0-9-]+\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
-    "cluster must be `<set>/<source-slug>` in kebab-case",
-  );
+export const clusterKey = z.string().regex(CLUSTER_KEY, CLUSTER_KEY_MESSAGE);
 
 /**
  * Provenance — where an entry came from. `wordpress` entries record the

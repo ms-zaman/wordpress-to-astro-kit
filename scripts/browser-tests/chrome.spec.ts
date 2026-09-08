@@ -23,6 +23,9 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "@playwright/test";
 
+import { migration } from "../../migration.config.ts";
+import { sitePath } from "../../apps/website/src/routing/url-shape.ts";
+
 /**
  * What THIS build actually contains.
  *
@@ -219,9 +222,21 @@ test.describe("navigation", () => {
   });
 });
 
+/**
+ * Where this site lists its posts.
+ *
+ * `/blog/` was written here three times. It is the kit's own default and not a
+ * fact about any site being migrated: WordPress puts the posts page wherever
+ * Settings → Reading says, and the first real migration put it at `/news/`, so
+ * two of these tests navigated to a 404 and failed on the empty page rather
+ * than on anything they were written to check. The test below this one already
+ * took care not to assume `/category/` — same rule, one line earlier.
+ */
+const POSTS_INDEX = sitePath(migration.permalinks.postsIndex);
+
 test.describe("the blog listing", () => {
   test("a card reaches its post", async ({ page }) => {
-    await page.goto("/blog/");
+    await page.goto(POSTS_INDEX);
     const first = page.locator(".wpk-post-card__link").first();
     const href = await first.getAttribute("href");
     await first.click();
@@ -232,7 +247,7 @@ test.describe("the blog listing", () => {
   test("a post links back to its category archive", async ({ page }) => {
     // The archive routes come from `migration.config.ts`'s permalinks, so this
     // follows whatever link the post renders rather than assuming `/category/`.
-    await page.goto("/blog/");
+    await page.goto(POSTS_INDEX);
     await page.locator(".wpk-post-card__link").first().click();
     const category = page
       .locator("main a[href*='categor'], main a[href*='/tag/']")
@@ -270,7 +285,7 @@ test("no page loads a script from anywhere — islands are inline", async ({
   page.on("request", (request) => {
     if (request.resourceType() === "script") scripts.push(request.url());
   });
-  for (const route of ["/", "/blog/", "/search/", "/about/"].filter(has))
+  for (const route of ["/", POSTS_INDEX, "/search/", "/about/"].filter(has))
     await page.goto(route);
   expect(scripts).toEqual([]);
 });
@@ -669,6 +684,42 @@ test.describe("the page a reader gets is the entity the source intended", () => 
     // And the page a reader gets is the English one, not the translation.
     await page.goto("/products/analyser/");
     await expect(page.locator("h1")).toContainText("The Analyser");
+  });
+
+  test("A NON-ASCII ROUTE IS SERVED, AND THE BROWSER ASKS FOR THE SAME URL", async ({
+    page,
+    request,
+  }) => {
+    // WordPress does not restrict `post_name` to ASCII, and on a site
+    // publishing in any script but Latin it usually is not ASCII. The kit
+    // carries one such route as a fixture so this runs on every build; a site
+    // that genuinely has none skips, rather than passing on nothing.
+    const manifest = await (await request.get("/deployment.json")).json();
+    const routes: string[] = manifest.routes.inventory
+      .filter((row: { kind: string }) => row.kind === "page")
+      .map((row: { path: string }) => row.path)
+      // eslint-disable-next-line no-control-regex
+      .filter((path: string) => /[^\u0000-\u007f]/.test(path));
+    test.skip(routes.length === 0, "this build publishes no non-ASCII route");
+
+    for (const route of routes) {
+      const response = await page.goto(route, {
+        waitUntil: "domcontentloaded",
+      });
+      expect(response?.status(), `${route} is served`).toBe(200);
+      await expect(
+        page.getByRole("heading", { level: 1 }),
+        `${route} renders its heading`,
+      ).toBeVisible();
+
+      // The browser percent-encodes the path on the wire, and that encoding
+      // must decode back to the route the manifest named — RFC 3986 §2.1, the
+      // property that makes `/tag/翻訳/` and `/tag/%e7%bf%bb%e8%a8%b3/` one
+      // URL. If these ever disagreed, every link to the page would be a
+      // redirect at best and a 404 at worst.
+      const asked = new URL(page.url()).pathname;
+      expect(decodeURIComponent(asked), `${route} round-trips`).toBe(route);
+    }
   });
 
   test("every content route in the manifest is claimed exactly once", async ({

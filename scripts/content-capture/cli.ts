@@ -23,6 +23,7 @@ import {
   settingsFromConfig,
 } from "../site-map-audit/fetch.ts";
 import { capturePostType, writeCapture } from "./capture.ts";
+import { htmlLang, sameLanguage } from "./language.ts";
 import { WordPressRest } from "./rest.ts";
 import {
   classifyTaxonomies,
@@ -30,6 +31,7 @@ import {
   ofCapability,
   taxonomiesOfCapability,
 } from "../custom-types/capability.ts";
+import localeRegistry from "../../content/config/locales.json" with { type: "json" };
 import { migration } from "../../migration.config.ts";
 import { parseArgs } from "../lib/args.ts";
 
@@ -67,6 +69,26 @@ if (isPlaceholderUserAgent(settings.userAgent))
 // ---------------------------------------------------------------------------
 if (command === "census") {
   process.stdout.write(`\ncontent census — ${rest.origin}\n\n`);
+
+  // The language first, because it is one request and it changes what every
+  // later number means. REST does not carry it; only `<html lang>` does.
+  const front = await reader.get(`${rest.origin}/`);
+  const lang = front.body === undefined ? null : htmlLang(front.body);
+  const agrees = sameLanguage(lang, localeRegistry.defaultLocale);
+  process.stdout.write(
+    `  LANGUAGE\n` +
+      `    the source declares   ${lang ?? `nothing (front page answered ${front.status})`}\n` +
+      `    this kit is set to    ${localeRegistry.defaultLocale}\n` +
+      (agrees === false
+        ? "    !! THESE DISAGREE. Every entry would be written in the wrong\n" +
+          "       language, and no gate in this kit reads <html lang> against\n" +
+          `       the source. Add "${lang}" to content/config/locales.json.\n`
+        : agrees === null
+          ? "    the source declares no language, so the locale you configure is\n" +
+            "    a choice rather than a reading.\n"
+          : "") +
+      "\n",
+  );
 
   const types = await rest.postTypes();
   if (types.length === 0) {

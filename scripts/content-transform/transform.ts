@@ -35,6 +35,8 @@
 // The local identity is the file path; the route comes from the permalinks.
 // Four names, none of them derived from another.
 import type { ValidationIssue } from "../../apps/website/src/content-model/cross-entry.ts";
+import { readSourceSlug } from "../../apps/website/src/content-model/slug.ts";
+import type { SlugRefused } from "../../apps/website/src/content-model/slug.ts";
 
 /** One entry as `content-capture` writes it. */
 export interface CapturedRow {
@@ -88,7 +90,31 @@ export type ExcludedReason =
   /** A required field the source did not supply. */
   | "incomplete"
   /** A slug the content model cannot express. */
-  | "unrepresentable-slug";
+  | "unrepresentable-slug"
+  /**
+   * Two source rows claiming one slug.
+   *
+   * WordPress's `wp_unique_post_slug()` makes a page's `post_name` unique
+   * among its SIBLINGS, not across the site: `/security/` and
+   * `/about/security/` are two pages and both are named `security`. This
+   * kit's page identity is the slug alone — the resolver keys the parent
+   * chain on it — so it can hold one of them.
+   *
+   * Measured on ja.wordpress.org: four such pairs, and before this reason
+   * existed the second row of each pair overwrote the first on the way to
+   * disk. The transform reported 71 entries and 67 files were written, and
+   * nothing compared the two numbers.
+   */
+  | "duplicate-slug";
+
+/** One slug stored in a different spelling from the one the source served. */
+export interface DecodedSlug {
+  readonly kind: string;
+  /** As WordPress stores it: `%e7%bf%bb%e8%a8%b3`. */
+  readonly raw: string;
+  /** As this kit stores it: `翻訳`. The same URL. */
+  readonly slug: string;
+}
 
 export interface Excluded {
   readonly kind: string;
@@ -112,12 +138,27 @@ export interface TransformResult {
   readonly authors: readonly Record<string, unknown>[];
   /** Every row that produced no entry, with the reason. */
   readonly excluded: readonly Excluded[];
+  /**
+   * Every REGISTRY row — a term, an author — that produced no row, with the
+   * reason. Separate from `excluded` because the registries are built from one
+   * capture and this function runs once per post type, so the CLI must
+   * de-duplicate these and must not de-duplicate those.
+   *
+   * This list used to not exist, and the rows in it were dropped by a bare
+   * `continue`. On ja.wordpress.org that silently removed seven tags and left
+   * nine posts pointing at them: the transform reported ten exclusions and had
+   * made seventeen.
+   */
+  readonly registryExcluded: readonly Excluded[];
+  /**
+   * Slugs whose source spelling was percent-encoded and whose stored spelling
+   * is not. Reported rather than performed quietly, because it is the one
+   * place this transform changes how an identity is spelled.
+   */
+  readonly decodedSlugs: readonly DecodedSlug[];
   /** Problems a person must fix; the transform still returns what it could. */
   readonly issues: readonly ValidationIssue[];
 }
-
-/** The slug alphabet the content model accepts. */
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** `2026-01-15T09:30:00` → `2026-01-15`. Never invented. */
 const isoDay = (value: string | undefined): string | undefined => {
@@ -196,10 +237,31 @@ export function transform(input: TransformInput): TransformResult {
   const excluded: Excluded[] = [];
   const issues: ValidationIssue[] = [];
 
+  const decodedSlugs: DecodedSlug[] = [];
+  const registryExcluded: Excluded[] = [];
+  /** slug -> the row that claimed it first. One entry per file written. */
+  const claimed = new Map<string, CapturedRow>();
+
   const set = input.kind === "post" ? "posts" : "pages";
-  const categoryBySourceId = new Map(input.categories.map((t) => [t.id, t]));
-  const tagBySourceId = new Map(input.tags.map((t) => [t.id, t]));
-  const authorBySourceId = new Map(input.authors.map((a) => [a.id, a]));
+
+  // Terms and authors are read ONCE, here, and every reference below resolves
+  // through the result. Before this they were re-tested at each use with a
+  // regex, in four places, and two of those places tested nothing at all — so
+  // a term the registry had refused still reached a post's front matter.
+  const categoryIndex = indexSlugs(input.categories, "categories");
+  const tagIndex = indexSlugs(input.tags, "tags");
+  const authorIndex = indexSlugs(input.authors, "authors");
+  registryExcluded.push(
+    ...categoryIndex.excluded,
+    ...tagIndex.excluded,
+    ...authorIndex.excluded,
+  );
+  decodedSlugs.push(
+    ...categoryIndex.decoded,
+    ...tagIndex.decoded,
+    ...authorIndex.decoded,
+  );
+
   const mediaBySourceId = new Map(input.media.map((m) => [m.id, m]));
   const pageBySourceId = new Map(input.rows.map((r) => [r.id, r]));
 
@@ -240,18 +302,19 @@ export function transform(input: TransformInput): TransformResult {
       continue;
     }
 
-    if (!SLUG.test(row.slug)) {
+    const reading = readSourceSlug(row.slug);
+    if (!reading.ok) {
       excluded.push({
         kind: set,
         id: row.id,
         slug: row.slug,
         reason: "unrepresentable-slug",
-        detail:
-          `"${row.slug}" is not lowercase kebab-case, which the content model ` +
-          "requires. See docs/04-implementation/stranger-site-boundaries.md.",
+        detail: `${reading.detail} (${reading.reason})`,
       });
       continue;
     }
+    const slug = reading.slug;
+    if (reading.decoded) decodedSlugs.push({ kind: set, raw: row.slug, slug });
 
     const updatedAt = isoDay(row.modified) ?? isoDay(row.date);
     if (updatedAt === undefined) {
@@ -278,10 +341,10 @@ export function transform(input: TransformInput): TransformResult {
     }
 
     const frontMatter: Record<string, unknown> = {
-      slug: row.slug,
+      slug,
       title,
       locale: input.locale,
-      cluster: `${set}/${row.slug}`,
+      cluster: `${set}/${slug}`,
       updatedAt,
     };
 
@@ -303,34 +366,40 @@ export function transform(input: TransformInput): TransformResult {
       }
       frontMatter.publishedAt = publishedAt;
 
-      const author = authorBySourceId.get(row.author ?? -1);
-      if (author === undefined || !SLUG.test(author.slug)) {
+      const authorSlug = authorIndex.slugById.get(row.author ?? -1);
+      if (authorSlug === undefined) {
+        const refusal = authorIndex.refusedById.get(row.author ?? -1);
         excluded.push({
           kind: set,
           id: row.id,
-          slug: row.slug,
+          slug,
           reason: "incomplete",
           detail:
-            `author ${row.author} is not in the captured author set. The users ` +
-            "route is often closed to anonymous readers; capture resolves " +
-            "authors through `_embed` instead.",
+            refusal === undefined
+              ? `author ${row.author} is not in the captured author set. The users ` +
+                "route is often closed to anonymous readers; capture resolves " +
+                "authors through `_embed` instead."
+              : `author ${row.author} was captured but its slug cannot be ` +
+                `represented: ${refusal.detail} (${refusal.reason})`,
         });
         continue;
       }
-      frontMatter.author = author.slug;
+      frontMatter.author = authorSlug;
 
       // WordPress gives every post at least one category. A post whose
       // categories are all unknown is a broken reference, not a post with none.
-      const categories = (row.categories ?? [])
-        .map((id) => categoryBySourceId.get(id)?.slug)
-        .filter(
-          (slug): slug is string => slug !== undefined && SLUG.test(slug),
-        );
+      const categories = resolveTerms(
+        row.categories,
+        categoryIndex,
+        "category",
+        where,
+        issues,
+      );
       if (categories.length === 0) {
         excluded.push({
           kind: set,
           id: row.id,
-          slug: row.slug,
+          slug,
           reason: "incomplete",
           detail:
             `categories [${(row.categories ?? []).join(", ")}] resolved to none ` +
@@ -340,9 +409,7 @@ export function transform(input: TransformInput): TransformResult {
       }
       frontMatter.categories = categories;
 
-      const tags = (row.tags ?? [])
-        .map((id) => tagBySourceId.get(id)?.slug)
-        .filter((slug): slug is string => slug !== undefined);
+      const tags = resolveTerms(row.tags, tagIndex, "tag", where, issues);
       if (tags.length > 0) frontMatter.tags = tags;
 
       const featured = mediaBySourceId.get(row.featured_media ?? -1);
@@ -364,17 +431,44 @@ export function transform(input: TransformInput): TransformResult {
     } else {
       // A page's parent is a SLUG in the content model and an id in WordPress.
       const parent = pageBySourceId.get(row.parent ?? 0);
+      const parentReading =
+        parent === undefined ? undefined : readSourceSlug(parent.slug);
       if ((row.parent ?? 0) > 0) {
-        if (parent === undefined || !SLUG.test(parent.slug))
+        if (parentReading === undefined || !parentReading.ok)
           issues.push({
             code: "page-parent-unknown",
             message:
-              `${where}: parent ${row.parent} is not in this capture, so the ` +
-              "hierarchy would be broken. Capture every page before transforming.",
+              `${where}: parent ${row.parent} ` +
+              (parentReading === undefined
+                ? "is not in this capture"
+                : `has a slug this kit cannot represent (${parentReading.reason})`) +
+              ", so the hierarchy would be broken. Capture every page before " +
+              "transforming.",
           });
-        else frontMatter.parent = parent.slug;
+        else frontMatter.parent = parentReading.slug;
       }
     }
+
+    // Last, because a row that fails any check above never claimed a slug and
+    // must not make the next row with that slug look like a collision.
+    const firstClaim = claimed.get(slug);
+    if (firstClaim !== undefined) {
+      excluded.push({
+        kind: set,
+        id: row.id,
+        slug,
+        reason: "duplicate-slug",
+        detail:
+          `source id ${row.id} (${row.link ?? "no link captured"}) and source ` +
+          `id ${firstClaim.id} (${firstClaim.link ?? "no link captured"}) both ` +
+          `have the slug "${slug}". WordPress makes a page slug unique among ` +
+          "its siblings; this content model makes it unique across the " +
+          "collection. Give one of them a different slug and a redirect, or " +
+          "keep the hierarchy and change the model.",
+      });
+      continue;
+    }
+    claimed.set(slug, row);
 
     frontMatter.source = {
       system: "wordpress",
@@ -383,7 +477,7 @@ export function transform(input: TransformInput): TransformResult {
     };
 
     entries.push({
-      file: `${set}/${row.slug}.md`,
+      file: `${set}/${slug}.md`,
       frontMatter,
       body: row.content?.rendered ?? "",
     });
@@ -391,12 +485,100 @@ export function transform(input: TransformInput): TransformResult {
 
   return {
     entries,
-    categories: termRows(input.categories, input.locale, input.capturedAt),
-    tags: termRows(input.tags, input.locale, input.capturedAt),
-    authors: authorRows(input.authors, input.capturedAt),
+    categories: termRows(
+      input.categories,
+      categoryIndex,
+      input.locale,
+      input.capturedAt,
+    ),
+    tags: termRows(input.tags, tagIndex, input.locale, input.capturedAt),
+    authors: authorRows(input.authors, authorIndex, input.capturedAt),
     excluded,
+    registryExcluded,
+    decodedSlugs,
     issues,
   };
+}
+
+/**
+ * Every term or author id that has a representable slug, and every one that
+ * does not — with the reason it does not.
+ *
+ * One reading, reused. A slug tested at each point of use is a slug tested
+ * differently at each point of use, and that is exactly what happened here:
+ * the registry refused a term, the post's `tags` list did not, and the entry
+ * kept a reference to a row nothing had written.
+ */
+interface SlugIndex {
+  readonly slugById: ReadonlyMap<number, string>;
+  readonly refusedById: ReadonlyMap<number, SlugRefused>;
+  readonly excluded: readonly Excluded[];
+  readonly decoded: readonly DecodedSlug[];
+}
+
+function indexSlugs(
+  rows: readonly { readonly id: number; readonly slug: string }[],
+  kind: string,
+): SlugIndex {
+  const slugById = new Map<number, string>();
+  const refusedById = new Map<number, SlugRefused>();
+  const excluded: Excluded[] = [];
+  const decoded: DecodedSlug[] = [];
+  for (const row of rows) {
+    const reading = readSourceSlug(row.slug);
+    if (reading.ok) {
+      slugById.set(row.id, reading.slug);
+      if (reading.decoded)
+        decoded.push({ kind, raw: row.slug, slug: reading.slug });
+      continue;
+    }
+    refusedById.set(row.id, reading);
+    excluded.push({
+      kind,
+      id: row.id,
+      slug: row.slug,
+      reason: "unrepresentable-slug",
+      detail: `${reading.detail} (${reading.reason})`,
+    });
+  }
+  return { slugById, refusedById, excluded, decoded };
+}
+
+/**
+ * A post's term references, resolved — and an issue for every one that does
+ * not resolve, rather than a shorter list.
+ *
+ * A post that quietly keeps three of its four tags is the failure this whole
+ * module is written against: nothing errors, the page renders, and the only
+ * evidence that a tag was lost is on a site nobody is comparing against any
+ * more.
+ */
+function resolveTerms(
+  ids: readonly number[] | undefined,
+  index: SlugIndex,
+  label: string,
+  where: string,
+  issues: ValidationIssue[],
+): string[] {
+  const slugs: string[] = [];
+  for (const id of ids ?? []) {
+    const slug = index.slugById.get(id);
+    if (slug !== undefined) {
+      slugs.push(slug);
+      continue;
+    }
+    const refusal = index.refusedById.get(id);
+    issues.push({
+      code: "post-tag-unregistered",
+      message:
+        `${where}: ${label} ${id} is referenced by this row but ` +
+        (refusal === undefined
+          ? "is not in the capture, so the membership is dropped. Re-capture " +
+            "the taxonomy before transforming."
+          : `its slug cannot be represented, so the membership is dropped: ${refusal.detail} (${refusal.reason})`),
+    });
+  }
+  return slugs;
 }
 
 /**
@@ -409,22 +591,21 @@ export function transform(input: TransformInput): TransformResult {
  */
 function termRows(
   terms: readonly CapturedTerm[],
+  index: SlugIndex,
   locale: string,
   capturedAt: string,
 ): Record<string, unknown>[] {
-  const bySourceId = new Map(terms.map((t) => [t.id, t]));
   const rows: Record<string, unknown>[] = [];
   for (const term of terms) {
-    if (!SLUG.test(term.slug)) continue;
+    const slug = index.slugById.get(term.id);
+    if (slug === undefined) continue; // already recorded, with its reason
     const name = decodeEntities(term.name ?? "").trim();
-    const parent = bySourceId.get(term.parent ?? 0);
+    const parentSlug = index.slugById.get(term.parent ?? 0);
     const description = textOf(term.description ?? "");
     rows.push({
-      slug: term.slug,
-      ...(parent !== undefined && SLUG.test(parent.slug)
-        ? { parent: parent.slug }
-        : {}),
-      name: { [locale]: name === "" ? term.slug : name },
+      slug,
+      ...(parentSlug === undefined ? {} : { parent: parentSlug }),
+      name: { [locale]: name === "" ? slug : name },
       ...(description === "" ? {} : { description: { [locale]: description } }),
       source: {
         system: "wordpress",
@@ -448,16 +629,21 @@ function termRows(
  */
 function authorRows(
   authors: readonly CapturedAuthor[],
+  index: SlugIndex,
   capturedAt: string,
 ): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const author of authors) {
-    if (!SLUG.test(author.slug)) continue;
+    const slug = index.slugById.get(author.id);
+    if (slug === undefined) continue; // already recorded, with its reason
     const bio = textOf(author.description ?? "");
     rows.push({
-      slug: author.slug,
-      name: decodeEntities(author.name ?? "").trim() || author.slug,
-      nicename: author.slug,
+      slug,
+      name: decodeEntities(author.name ?? "").trim() || slug,
+      // `nicename` is the source's own key for the author, which is what
+      // `/author/<nicename>/` uses. It is the DECODED spelling for the same
+      // reason the slug is: the two encode to one URL.
+      nicename: slug,
       ...(bio === "" ? {} : { bio }),
       source: {
         system: "wordpress",

@@ -47,3 +47,41 @@ export function routeKey(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
   return trimmed === "" ? "/" : trimmed;
 }
+
+/**
+ * One path, however it is spelled: the comparison form of a URL path.
+ *
+ * A percent-encoded octet and the character it encodes are the SAME URL —
+ * RFC 3986 §2.1 — and the hex digits are case-insensitive (§6.2.2.1). So a
+ * site that publishes non-ASCII URLs has three spellings of every one of them
+ * and they must all join:
+ *
+ *     /tag/翻訳/                 what this build emits
+ *     /tag/%e7%bf%bb%e8%a8%b3/   what WordPress stores and its sitemap serves
+ *     /tag/%E7%BF%BB%E8%A8%B3/   what `new URL(…).pathname` produces
+ *
+ * Measured, those were three different keys, so every non-Latin URL on the
+ * site would have been reported as a gap AND as an extra by the same audit.
+ *
+ * Decoded SEGMENT BY SEGMENT, and a segment whose decoding would introduce a
+ * delimiter is left as it stands: `%2F` inside a segment is a literal slash in
+ * a name, not a path separator, and decoding it would change the shape of the
+ * path rather than its spelling. A malformed escape — `%s`, which real content
+ * contains — is left alone too, because it decodes to nothing.
+ */
+export function comparablePath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => {
+      if (!segment.includes("%")) return segment;
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+      if (/[/?#]/.test(decoded)) return segment;
+      return decoded.normalize("NFC");
+    })
+    .join("/");
+}

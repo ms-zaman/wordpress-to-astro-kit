@@ -168,15 +168,14 @@ check("M3: A PASSWORD-PROTECTED BODY IS EXCLUDED BY NAME", () => {
 });
 
 check("M4: A SLUG THE MODEL CANNOT EXPRESS IS EXCLUDED, NOT MANGLED", () => {
-  // The kit's slug alphabet is ASCII kebab-case; WordPress's post_name is not.
-  // Transliterating would invent a URL the source never served.
-  const result = traced([
-    row({ slug: "%d0%bf%d1%80%d0%b8%d0%b2%d0%b5%d1%82" }),
-  ]);
+  // Still the rule — but "cannot express" now means what it says. A slug with
+  // a space in it is not a URL segment WordPress would have stored, and
+  // transliterating would invent a URL the source never served.
+  const result = traced([row({ slug: "hello world" })]);
   equal(result.excluded[0]!.reason, "unrepresentable-slug", "reason");
   assert(
-    result.excluded[0]!.detail.includes("stranger-site-boundaries"),
-    "pointing at the documented boundary",
+    result.excluded[0]!.detail.includes("outside-alphabet"),
+    "naming which refusal it was",
   );
 });
 
@@ -230,6 +229,216 @@ check("a page does not carry post-only fields", () => {
   assert(fm.categories === undefined, "no categories");
   assert(fm.author === undefined, "no author");
   assert(fm.publishedAt === undefined, "no publishedAt");
+});
+
+// ---------------------------------------------------------------------------
+console.log("\nNon-Latin identity: what WordPress actually stores");
+
+// WordPress percent-encodes a non-ASCII slug on the way into the database —
+// `sanitize_title_with_dashes()` calls `utf8_uri_encode()` — so these are the
+// spellings REST really serves. Every value below was copied from a live
+// capture of ja.wordpress.org and ru.wordpress.org.
+
+check("U1: A PERCENT-ENCODED CJK SLUG BECOMES AN ENTRY, DECODED", () => {
+  const result = run([row({ slug: "%e7%bf%bb%e8%a8%b3" })]);
+  equal(result.excluded.length, 0, "nothing excluded");
+  equal(result.entries.length, 1, "one entry");
+  equal(result.entries[0]!.frontMatter.slug, "翻訳", "slug is decoded");
+  equal(result.entries[0]!.file, "posts/翻訳.md", "and so is the file name");
+  equal(result.entries[0]!.frontMatter.cluster, "posts/翻訳", "cluster too");
+});
+
+check("U2: THE DECODE IS REPORTED, NOT PERFORMED QUIETLY", () => {
+  const result = run([row({ slug: "%e7%bf%bb%e8%a8%b3" })]);
+  const decoded = result.decodedSlugs.find((one) => one.slug === "翻訳");
+  assert(decoded !== undefined, "the decode is on the record");
+  equal(decoded!.raw, "%e7%bf%bb%e8%a8%b3", "with the source spelling");
+});
+
+check("U3: a mixed-script slug keeps both scripts", () => {
+  // ja.wordpress.org post 7333: "wordpress-6-6-ベータ-1".
+  const result = run([
+    row({ slug: "wordpress-6-6-%e3%83%99%e3%83%bc%e3%82%bf-1" }),
+  ]);
+  equal(
+    result.entries[0]!.frontMatter.slug,
+    "wordpress-6-6-ベータ-1",
+    "Latin, digits and katakana in one slug",
+  );
+});
+
+check("U4: THE PROLONGED SOUND MARK IS A LETTER", () => {
+  // ー (U+30FC) is \p{Lm}, not \p{Lo}. A slug alphabet that forgets it
+  // rejects most katakana slugs there are, including U3's.
+  const result = run([row({ slug: "%e3%83%a2%e3%83%90%e3%82%a4%e3%83%ab" })]);
+  equal(result.entries[0]!.frontMatter.slug, "モバイル", "モバイル");
+  const withMark = run([row({ slug: "%e3%83%99%e3%83%bc%e3%82%bf" })]);
+  equal(withMark.entries[0]!.frontMatter.slug, "ベータ", "ベータ");
+});
+
+check("U5: a Cyrillic slug is lower case and passes", () => {
+  // ru.wordpress.org category 3290.
+  const result = run([
+    row({
+      slug: "%d0%be%d0%b1%d1%80%d0%b0%d0%b7%d0%be%d0%b2%d0%b0%d0%bd%d0%b8%d0%b5",
+    }),
+  ]);
+  equal(result.entries[0]!.frontMatter.slug, "образование", "образование");
+});
+
+check("U6: a Bengali slug with matras survives", () => {
+  // দাম is 3 code points, one of which is a combining mark.
+  const result = run([row({ slug: "%e0%a6%a6%e0%a6%be%e0%a6%ae" })]);
+  equal(result.entries[0]!.frontMatter.slug, "দাম", "দাম");
+});
+
+check("U7: AN UPPERCASE SLUG IS STILL REFUSED, IN ANY SCRIPT", () => {
+  // WordPress lower-cases with mb_strtolower before storing, so this did not
+  // come from its sanitiser — and the case mapping is locale-dependent.
+  for (const slug of ["Hello-World", "Образование"]) {
+    const result = run([row({ slug })]);
+    equal(result.excluded.length, 1, `${slug} excluded`);
+    equal(result.excluded[0]!.reason, "unrepresentable-slug", `${slug} reason`);
+  }
+});
+
+check("U8: A MALFORMED ESCAPE IS NAMED, NOT THROWN", () => {
+  // ja.wordpress.org publishes a body containing href="%s" — an unfilled
+  // printf template. decodeURIComponent throws URIError on it.
+  const result = run([row({ slug: "%s" })]);
+  equal(result.entries.length, 0, "no entry");
+  assert(
+    result.excluded[0]!.detail.includes("malformed-escape"),
+    "named as a malformed escape",
+  );
+});
+
+check("U9: A SLUG THAT IS NOT NFC IS REFUSED, NEVER NORMALISED", () => {
+  // Measured on macOS (APFS): a file written under an NFD name is found under
+  // its NFC spelling. On Linux they are two files. A content tree holding both
+  // is one entry on a laptop and two in CI, and nothing reports it.
+  const nfd = "가나".normalize("NFD");
+  assert(nfd !== "가나".normalize("NFC"), "the fixture really is decomposed");
+  const result = run([row({ slug: nfd })]);
+  equal(result.entries.length, 0, "no entry");
+  assert(result.excluded[0]!.detail.includes("not-nfc"), "named as not-NFC");
+});
+
+check(
+  "U10: A REFUSED TERM IS RECORDED, AND SO IS EVERY POST THAT NAMED IT",
+  () => {
+    // The defect this replaces: `if (!SLUG.test(term.slug)) continue`. Seven
+    // tags left ja.wordpress.org's registry without a record, and nine posts
+    // kept referring to them.
+    const result = transform({
+      kind: "post",
+      rows: [row({ tags: [9, 12] })],
+      ...base,
+      tags: [
+        { id: 9, slug: "sample", name: "Sample" },
+        { id: 12, slug: "Not A Slug", name: "Refused" },
+      ],
+    });
+    const refused = result.registryExcluded.find((one) => one.id === 12);
+    assert(refused !== undefined, "the term is on the record");
+    equal(refused!.kind, "tags", "as a tag");
+    equal(refused!.reason, "unrepresentable-slug", "with the reason");
+
+    equal(result.entries.length, 1, "the post still becomes an entry");
+    equal(
+      (result.entries[0]!.frontMatter.tags as string[]).length,
+      1,
+      "carrying only the tag that exists",
+    );
+    assert(
+      result.issues.some((one) => one.message.includes("tag 12")),
+      "and the dropped membership is an issue, not a silence",
+    );
+  },
+);
+
+check("U11: a term registry keeps a decoded parent", () => {
+  const result = transform({
+    kind: "post",
+    rows: [row({ categories: [3] })],
+    ...base,
+    categories: [
+      { id: 3, slug: "news", name: "News", parent: 4 },
+      { id: 4, slug: "%e7%bf%bb%e8%a8%b3", name: "翻訳" },
+    ],
+  });
+  const child = result.categories.find((one) => one.slug === "news");
+  equal(child!.parent, "翻訳", "the parent resolves to its decoded slug");
+});
+
+check("U12: AN AUTHOR WITH A REFUSED SLUG EXCLUDES THE POST BY NAME", () => {
+  const result = transform({
+    kind: "post",
+    rows: [row({ author: 8 })],
+    ...base,
+    authors: [{ id: 8, slug: "Jane Doe", name: "Jane" }],
+  });
+  equal(result.entries.length, 0, "no entry");
+  assert(
+    result.excluded[0]!.detail.includes("slug cannot be"),
+    "the reason is the author's slug, not a missing author",
+  );
+  assert(
+    result.registryExcluded.some((one) => one.kind === "authors"),
+    "and the author is on the record too",
+  );
+});
+
+check(
+  "U13: TWO PAGES WITH ONE SLUG — THE SECOND IS EXCLUDED, NOT WRITTEN OVER",
+  () => {
+    // WordPress makes a page slug unique among its SIBLINGS. ja.wordpress.org
+    // publishes /security/ and /about/security/, and four such pairs in all.
+    const result = transform({
+      kind: "page",
+      rows: [
+        row({
+          id: 3680,
+          slug: "security",
+          link: "https://s.example/security/",
+        }),
+        row({
+          id: 4837,
+          slug: "security",
+          parent: 4826,
+          link: "https://s.example/about/security/",
+        }),
+      ],
+      ...base,
+    });
+    equal(result.entries.length, 1, "one entry, not two files with one name");
+    equal(result.excluded.length, 1, "and one exclusion");
+    equal(result.excluded[0]!.reason, "duplicate-slug", "reason");
+    assert(
+      result.excluded[0]!.detail.includes("3680") &&
+        result.excluded[0]!.detail.includes("4837"),
+      "naming BOTH source rows, so the pair can be found on the source site",
+    );
+  },
+);
+
+check("U14: a row excluded earlier never claims its slug", () => {
+  // A draft named `about` must not make the published `about` look like a
+  // collision. The claim is registered last, after every other check.
+  const result = transform({
+    kind: "page",
+    rows: [
+      row({ id: 1, slug: "about", status: "draft" }),
+      row({ id: 2, slug: "about" }),
+    ],
+    ...base,
+  });
+  equal(result.entries.length, 1, "the published row becomes an entry");
+  equal(result.excluded[0]!.reason, "not-published", "the draft's own reason");
+  assert(
+    !result.excluded.some((one) => one.reason === "duplicate-slug"),
+    "and nothing is called a collision",
+  );
 });
 
 // ---------------------------------------------------------------------------

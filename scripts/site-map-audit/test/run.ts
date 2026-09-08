@@ -87,6 +87,37 @@ check("a key is path plus query, with the fragment dropped", () => {
   equal(comparisonKey(`${ORIGIN}/?s=hello`, ORIGIN), "/?s=hello", "query kept");
 });
 
+check("THREE SPELLINGS OF ONE NON-LATIN URL ARE ONE KEY", () => {
+  // A percent-encoded octet and its character are the same URL, and the hex
+  // digits are case-insensitive. WordPress's sitemap serves the lower-case
+  // form, `new URL().pathname` produces the upper-case one, and this build
+  // emits the character. Before this, that was three keys — so every non-Latin
+  // URL was reported as a gap AND as an extra by the same run.
+  const key = comparisonKey(`${ORIGIN}/tag/翻訳/`, ORIGIN);
+  equal(key, "/tag/翻訳/", "the decoded form is the key");
+  equal(
+    comparisonKey(`${ORIGIN}/tag/%e7%bf%bb%e8%a8%b3/`, ORIGIN),
+    key,
+    "lower-case percent-encoding",
+  );
+  equal(
+    comparisonKey(`${ORIGIN}/tag/%E7%BF%BB%E8%A8%B3/`, ORIGIN),
+    key,
+    "upper-case percent-encoding",
+  );
+});
+
+check("an escape that would change the PATH SHAPE is left encoded", () => {
+  // %2F is a slash IN A NAME, not a separator. Decoding it would turn one
+  // segment into two and make two different URLs look like one.
+  equal(comparisonKey(`${ORIGIN}/a%2Fb/`, ORIGIN), "/a%2Fb/", "encoded slash");
+});
+
+check("A MALFORMED ESCAPE IS LEFT ALONE, NEVER THROWN ON", () => {
+  // ja.wordpress.org publishes href="%s" — an unfilled printf template.
+  equal(comparisonKey(`${ORIGIN}/x%s/`, ORIGIN), "/x%s/", "kept as it stands");
+});
+
 check(
   "a trailing slash is added to an extension-less path, and only there",
   () => {

@@ -14,6 +14,7 @@ import path from "node:path";
 import { migration } from "../../migration.config.ts";
 import { PoliteReader, settingsFromConfig } from "../site-map-audit/fetch.ts";
 import { bodyReport, type BodyReport } from "./bodies.ts";
+import { htmlLang } from "./language.ts";
 import { WordPressRest, type PostType, type Taxonomy } from "./rest.ts";
 
 /**
@@ -91,6 +92,14 @@ export interface CapturedEntry {
   readonly renderedPage?: { url: string; status: number; html?: string };
 }
 
+/** What the source site's own front page declares about its language. */
+export interface SourceLanguage {
+  readonly url: string;
+  readonly status: number;
+  /** The `lang` of the root element, or null if it declares none. */
+  readonly lang: string | null;
+}
+
 export interface CaptureResult {
   readonly origin: string;
   readonly type: string;
@@ -111,6 +120,11 @@ export interface CaptureResult {
     status: number;
   }[];
   readonly bodies: BodyReport;
+  /**
+   * Absent when the front page could not be read. REST never carries this —
+   * see `./language.ts` for the measurement.
+   */
+  readonly sourceLanguage?: SourceLanguage;
   readonly notes: readonly string[];
 }
 
@@ -328,6 +342,28 @@ export async function capturePostType(
     return page === undefined ? entry : { ...entry, renderedPage: page };
   });
 
+  // --- the site's language --------------------------------------------------
+  //
+  // One request, for the one fact REST does not carry. It is fetched here
+  // rather than left to the person configuring the kit because the default
+  // that fills the gap — `en` — is silently wrong for most of the world, and a
+  // wrong `<html lang>` is invisible to every gate in this repository.
+  progress("reading the front page for its language");
+  const frontPage = await reader.get(`${rest.origin}/`);
+  const sourceLanguage: SourceLanguage = {
+    url: `${rest.origin}/`,
+    status: frontPage.status,
+    lang: frontPage.body === undefined ? null : htmlLang(frontPage.body),
+  };
+  if (sourceLanguage.lang === null)
+    notes.push(
+      frontPage.status === 200
+        ? "the front page answered 200 but declares no `lang` on <html>, so the " +
+            "source's language is unknown and the locale you configure is a choice."
+        : `the front page answered ${frontPage.status}, so the source's language ` +
+            "could not be read.",
+    );
+
   return {
     origin: rest.origin,
     type: options.type,
@@ -341,6 +377,7 @@ export async function capturePostType(
     authors,
     media,
     bodies,
+    sourceLanguage,
     notes,
   };
 }

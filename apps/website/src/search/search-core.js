@@ -39,27 +39,81 @@ export const FIELD_WEIGHTS = { title: 4, categories: 3, tags: 2, summary: 1 };
 const FIELDS = ["title", "categories", "tags", "summary"];
 
 /**
- * Fold text into the form the matcher compares: lowercase, diacritics
- * stripped, punctuation reduced to spaces. Identical on both sides.
+ * Fold text into the form the matcher compares: lowercase, LATIN diacritics
+ * stripped. Identical on both sides.
+ *
+ * The Latin restriction is the whole point, and it replaces a rule that read
+ * `.normalize("NFD").replace(/\p{Diacritic}/gu, "")` — every script at once.
+ * Measured, that rule did this:
+ *
+ *     café  -> cafe    the intended folding
+ *     だいじ -> たいし   だ is た + U+3099, and U+3099 is a Diacritic
+ *     バグ   -> ハク     so "バグ" (bug) and "ハク" became one word
+ *
+ * Dakuten and handakuten are not accents on a Japanese letter; they make a
+ * different letter. Folding them merges words that mean different things, and
+ * the search box quietly returns the wrong article rather than none.
+ *
+ * So a mark is dropped only when the character it sits on is Latin. Greek and
+ * Cyrillic are deliberately left alone too: й is not и, and choosing that it
+ * is would be a claim about Russian this kit has no business making.
  * @param {string} value
  * @returns {string}
  */
 export function normalizeText(value) {
   return value
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
-    .trim();
+    .replace(
+      /(\p{Script=Latin})(\p{Mn}+)/gu,
+      (_whole, base, marks) => base + marks.replace(/\p{Diacritic}/gu, ""),
+    )
+    .normalize("NFC")
+    .toLowerCase();
 }
 
 /**
+ * The segmenter, built once. `undefined` takes the host's locale, which is
+ * what a static index built on one machine and queried on another wants: the
+ * segmentation of CJK and Thai is dictionary-based rather than locale-based.
+ * @type {Intl.Segmenter | null}
+ */
+const SEGMENTER =
+  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "word" })
+    : null;
+
+/**
+ * Split text into the words the matcher indexes.
+ *
+ * This used to be `split(" ")` after punctuation became spaces, which assumes
+ * a script that puts spaces between words. Two things went wrong on a site
+ * that does not:
+ *
+ *   - Japanese has no spaces, so a whole title was ONE token. The matcher
+ *     compares with `startsWith`, so "リリース" did not match the title
+ *     "WordPress 7.1リリース候補版4" — the only queries that worked were the
+ *     ones that happened to start a line.
+ *   - `[^\p{Letter}\p{Number}]` treats a combining mark as punctuation, so
+ *     every abugida was shredded at its vowel signs: দাম (price) became the
+ *     two tokens দ and ম, and neither is a word.
+ *
+ * `Intl.Segmenter` knows where the words are in all of them. The fallback path
+ * is the old split with marks kept as letters, for a runtime without it.
  * @param {string} value
  * @returns {string[]}
  */
 export function terms(value) {
   const normalized = normalizeText(value);
-  return normalized === "" ? [] : normalized.split(" ");
+  if (SEGMENTER === null) {
+    const spaced = normalized
+      .replace(/[^\p{Letter}\p{Number}\p{Mark}]+/gu, " ")
+      .trim();
+    return spaced === "" ? [] : spaced.split(" ");
+  }
+  const out = [];
+  for (const piece of SEGMENTER.segment(normalized))
+    if (piece.isWordLike === true) out.push(piece.segment);
+  return out;
 }
 
 /**

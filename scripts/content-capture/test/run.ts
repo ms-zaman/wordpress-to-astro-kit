@@ -17,6 +17,7 @@ import {
   MINIMUM_CORPUS,
   SHORT_FRACTION,
 } from "../bodies.ts";
+import { htmlLang, sameLanguage } from "../language.ts";
 import { WordPressRest } from "../rest.ts";
 import type { Fetched, PoliteReader } from "../../site-map-audit/fetch.ts";
 
@@ -109,6 +110,46 @@ const restWith = (
 };
 
 // ---------------------------------------------------------------------------
+section("The language the source declares, which REST does not carry");
+
+check("`<html lang>` is read, in every spelling of the attribute", () => {
+  equal(htmlLang('<!doctype html>\n<html lang="ja">'), "ja", "double quotes");
+  equal(htmlLang("<html lang='bn-BD'>"), "bn-BD", "single quotes");
+  equal(htmlLang("<html lang=ar dir=rtl>"), "ar", "unquoted");
+  equal(
+    htmlLang('<html dir="rtl" class="x" lang="he">'),
+    "he",
+    "not the first attribute",
+  );
+  equal(htmlLang('<HTML LANG="ru">'), "ru", "upper case");
+});
+
+check("A DOCUMENT THAT DECLARES NOTHING RETURNS NULL, NOT A GUESS", () => {
+  equal(htmlLang("<html>"), null, "no attribute");
+  equal(htmlLang('<html lang="">'), null, "empty attribute");
+  equal(htmlLang('<html lang="   ">'), null, "whitespace only");
+  equal(htmlLang("<p>no root element</p>"), null, "no <html> at all");
+});
+
+check("a lang deeper in the document is NOT the site's language", () => {
+  // A quotation in another language is not what the site publishes in.
+  equal(
+    htmlLang('<html lang="ja"><body><div lang="en">quoted</div></body></html>'),
+    "ja",
+    "the root element wins",
+  );
+  equal(htmlLang('<body><div lang="en">x</div></body>'), null, "and only it");
+});
+
+check("LANGUAGES ARE COMPARED ON THE PRIMARY SUBTAG", () => {
+  equal(sameLanguage("ja", "en"), false, "ja is not en");
+  equal(sameLanguage("ja-JP", "ja"), true, "region is not a difference");
+  equal(sameLanguage("pt-BR", "pt"), true, "nor is a script or region");
+  equal(sameLanguage("JA", "ja"), true, "case is not a difference");
+  equal(sameLanguage("pt_BR", "pt-BR"), true, "WordPress's underscore form");
+  equal(sameLanguage(null, "en"), null, "unknown is not agreement");
+});
+
 section("Which bodies did NOT come back whole");
 
 /** A corpus shaped like the one that motivated this: a long tail and a cliff. */

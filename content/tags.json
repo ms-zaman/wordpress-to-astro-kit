@@ -1,7 +1,23 @@
 [
   {
+    "slug": "翻訳",
+    "name": {
+      "en": "翻訳 (translation)"
+    },
+    "description": {
+      "en": "A tag whose slug is not ASCII, so a taxonomy archive is published at a non-ASCII URL on every build."
+    },
+    "source": {
+      "system": "sample"
+    }
+  },
+  {
     "slug": "sample",
-    "name": { "en": "Sample" },
-    "source": { "system": "sample" }
+    "name": {
+      "en": "Sample"
+    },
+    "source": {
+      "system": "sample"
+    }
   }
 ]

@@ -22,6 +22,7 @@
 // configured them: date archives, feeds, the `wp-*` runtime, attachment and
 // upload paths, and paginated variants of any archive. Those are universals,
 // so they are recognised without config.
+import { comparablePath } from "../../apps/website/src/routing/url-shape.ts";
 import { migration, type Permalinks } from "../../migration.config.ts";
 
 export type Family =
@@ -77,7 +78,9 @@ export function comparisonKey(url: string, origin: string): string | null {
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
   if (parsed.origin !== new URL(origin).origin) return null;
-  let path = parsed.pathname;
+  // Decoded, because a percent-encoded octet and its character are one URL and
+  // this key is what the diff joins on. See `comparablePath`.
+  let path = comparablePath(parsed.pathname);
   if (!FILE_LIKE.test(path) && !path.endsWith("/")) path += "/";
   return path + parsed.search;
 }
