@@ -1,0 +1,31 @@
+[
+  {
+    "slug": "announcements",
+    "name": { "en": "Announcements" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "11",
+      "capturedAt": "2026-02-01"
+    }
+  },
+  {
+    "slug": "openings",
+    "parent": "announcements",
+    "name": { "en": "Openings" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "12",
+      "capturedAt": "2026-02-01"
+    }
+  },
+  {
+    "slug": "closures",
+    "parent": "announcements",
+    "name": { "en": "Closures" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "13",
+      "capturedAt": "2026-02-01"
+    }
+  }
+]

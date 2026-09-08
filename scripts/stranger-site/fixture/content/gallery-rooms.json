@@ -1,0 +1,30 @@
+[
+  {
+    "slug": "east-wing",
+    "name": { "en": "East wing" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "70",
+      "capturedAt": "2026-02-01"
+    }
+  },
+  {
+    "slug": "print-room",
+    "parent": "east-wing",
+    "name": { "en": "Print room" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "71",
+      "capturedAt": "2026-02-01"
+    }
+  },
+  {
+    "slug": "openings",
+    "name": { "en": "Openings" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "72",
+      "capturedAt": "2026-02-01"
+    }
+  }
+]

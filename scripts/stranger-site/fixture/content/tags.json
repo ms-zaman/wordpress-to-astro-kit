@@ -1,0 +1,11 @@
+[
+  {
+    "slug": "free-entry",
+    "name": { "en": "Free entry" },
+    "source": {
+      "system": "wordpress",
+      "sourceId": "40",
+      "capturedAt": "2026-02-01"
+    }
+  }
+]

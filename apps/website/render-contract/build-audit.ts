@@ -24,6 +24,7 @@ import {
 import { siteOrigin } from "../src/rendering/site-identity.ts";
 import { routeKey } from "../src/routing/url-shape.ts";
 import { sampleEntries } from "../content-contract/read-entries.ts";
+import { migration } from "../../../migration.config.ts";
 
 const website = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -134,6 +135,7 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 console.log("\nEvery route was emitted, and nothing else was");
 const missing = inventory.filter(
   (route) => !existsSync(path.join(dist, route.file)),
@@ -154,6 +156,58 @@ const walk = (dir: string): void => {
   }
 };
 walk(dist);
+// ---------------------------------------------------------------------------
+// Media: no stale source URL where the migration was supposed to move the file.
+//
+// The engine rewrites a reference it OWNS to the path this site serves it at.
+// A reference in the uploads namespace still standing in the built HTML means
+// one of two things, and both are defects: the engine did not recognise it, or
+// somebody added markup after the rewrite. Either way the browser asks the
+// source site for a file, and the migration is not finished.
+//
+// Only checked when `media.migrateFrom` names a host. With it empty — the
+// default — uploads are deliberately served from their origin and a preserved
+// path is the correct output, not a leak.
+if (migration.media.migrateFrom.length > 0) {
+  const uploads = `/${migration.media.uploadsPath.replace(/^\/+|\/+$/g, "")}/`;
+  const migratable = new Set(
+    migration.media.migrateFrom.map((host) =>
+      host.toLowerCase().replace(/^www\./, ""),
+    ),
+  );
+  const stale: string[] = [];
+  for (const relative of htmlFiles) {
+    const html = readFileSync(path.join(dist, relative), "utf8");
+    for (const match of html.matchAll(
+      /\b(?:src|srcset|href|poster|data-src|data-srcset)="([^"]*)"/g,
+    )) {
+      for (const candidate of (match[1] ?? "").split(",")) {
+        const url = candidate.trim().split(/[ \t]+/)[0] ?? "";
+        if (!url.includes(uploads)) continue;
+        // Somebody else's WordPress is not ours to move, and the engine leaves
+        // it alone on purpose. Only OUR host's uploads are a leak.
+        let host = "";
+        try {
+          const absolute = url.startsWith("//") ? `https:${url}` : url;
+          host = /^https?:\/\//i.test(absolute)
+            ? new URL(absolute).host.toLowerCase().replace(/^www\./, "")
+            : "";
+        } catch {
+          host = "";
+        }
+        if (host !== "" && !migratable.has(host)) continue;
+        stale.push(`${relative}: ${url}`);
+      }
+    }
+  }
+  check(
+    "no migrated media still points at the source site",
+    stale.length === 0,
+    `${stale.length} stale reference(s): ${stale.slice(0, 3).join("; ")}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 const claimed = new Set(inventory.map((route) => route.file));
 const unclaimed = htmlFiles.filter((file) => !claimed.has(file));
 check(

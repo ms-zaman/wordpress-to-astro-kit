@@ -313,6 +313,63 @@ export interface SourceMarkupConfig {
   readonly notPartOfThePage: readonly (readonly [string, string])[];
 }
 
+/**
+ * The media library, and what this build is allowed to do with it.
+ *
+ * ## Why this is configuration and not a constant
+ *
+ * `/wp-content/uploads/` is WordPress's default and not its rule: the
+ * directory is `UPLOADS` in `wp-config.php`, `upload_path` in the options
+ * table, and a multisite install serves `/wp-content/uploads/sites/7/`. A kit
+ * that hard-coded the prefix would silently classify a real library as
+ * "outside every migratable namespace" and migrate nothing.
+ *
+ * ## Why a HOST allowlist rather than a pattern
+ *
+ * `migrateFrom` is the safety rule. A migrated body routinely carries images
+ * from other people's sites — a partner's logo, an embedded chart — and some
+ * of those URLs contain `/wp-content/uploads/` because that site is also
+ * WordPress. Rewriting one would point this site at a file it does not have
+ * and never captured. So a reference is migrated only when its HOST is named
+ * here; everything else is classified `EXTERNAL` and left exactly as written.
+ */
+export interface MediaProfile {
+  /**
+   * The uploads directory, as a root-relative path.
+   *
+   * WordPress's default is `/wp-content/uploads`. A multisite child serves
+   * `/wp-content/uploads/sites/<id>`; read it off a real image URL rather than
+   * assuming.
+   */
+  readonly uploadsPath: string;
+  /**
+   * Extra local namespaces the source site served files from.
+   *
+   * Empty by default and deliberately so: a plugin that serves downloads from
+   * its own directory is a real shape, and it is a DECISION to migrate it —
+   * the engine classifies anything matched here as `CONFIGURED` rather than
+   * `SUPPORTED`, so a report says which files moved because somebody asked.
+   */
+  readonly extraPaths: readonly string[];
+  /**
+   * The hosts whose files this build may copy.
+   *
+   * Compared with `www.` and the scheme ignored, because a body written over
+   * fifteen years carries all four spellings of one site. A root-relative
+   * reference needs no host and is always the site's own.
+   */
+  readonly migrateFrom: readonly string[];
+  /**
+   * The path migrated files are served at.
+   *
+   * `/media/` rather than keeping `/wp-content/uploads/`: the uploads path is
+   * the SOURCE's shape, and a static site that reproduces it is claiming to be
+   * a WordPress install. Redirects preserve the old URLs where that matters —
+   * that is what `content/redirects.json` is for.
+   */
+  readonly localBase: string;
+}
+
 export interface MigrationConfig {
   /**
    * The WordPress site being migrated: scheme and host, no trailing slash.
@@ -356,6 +413,8 @@ export interface MigrationConfig {
    * patterns. This list is for everything else.
    */
   readonly taxonomies: readonly TaxonomyProfile[];
+  /** The media library, and what this build may do with it. */
+  readonly media: MediaProfile;
 }
 
 export const migration: MigrationConfig = {
@@ -432,6 +491,17 @@ export const migration: MigrationConfig = {
   // and its URLs carry them — which is the case a flat model gets wrong.
   // `product-tag` is neither, which is the case a hierarchical model gets
   // wrong by assuming.
+  media: {
+    uploadsPath: "/wp-content/uploads",
+    extraPaths: [],
+    // The kit's own sample content carries a WordPress-shaped body, so the
+    // engine runs on every build rather than only in a unit test. Replace this
+    // with your source site's host — nothing is copied from a host this does
+    // not list, so an unedited clone reaches out to nobody.
+    migrateFrom: ["old.example.com"],
+    localBase: "/media",
+  },
+
   taxonomies: [
     {
       name: "product_cat",
