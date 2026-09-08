@@ -25,7 +25,10 @@ import {
   outputFileFor,
   splitReference,
   hostKey,
+  type AssetClass,
 } from "../../../apps/website/src/media/asset-identity.ts";
+import { mediaRef } from "../../../apps/website/src/content-model/shared.ts";
+import { migration } from "../../../migration.config.ts";
 import {
   assetConflicts,
   distinctAssets,
@@ -415,6 +418,246 @@ check("M13: THE LIVE RENDER PATH REWRITES, AND LEAVES THE REST", () => {
   );
   assert(html.includes("/media/2026/01/gallery.svg"), `migrated: ${html}`);
   assert(html.includes("partner.example.org"), "and the partner's stayed");
+});
+
+// ---------------------------------------------------------------------------
+console.log("\nOne authority — mediaRef and the engine cannot disagree");
+
+/**
+ * Every reference form that has ever been argued about, and what each layer
+ * must say about it.
+ *
+ * `mediaRef` used to carry its OWN uploads regex. Measured across these
+ * eighteen forms before the cleanup, the two authorities disagreed on eleven,
+ * and three of those were live defects: `/media/…` — the engine's own output
+ * form — was rejected by the schema, while a `..` path escape and a bare
+ * directory were accepted by it.
+ *
+ * `accepts` is what the SCHEMA must do. It is not simply "is it migrated":
+ * an external https URL is a legal media reference and is not migrated, and an
+ * external URL inside the uploads namespace is refused for a reason that is
+ * about content hygiene rather than about the namespace — see shared.ts.
+ */
+const AGREEMENT: {
+  url: string;
+  classification: AssetClass;
+  accepts: boolean;
+  why: string;
+}[] = [
+  {
+    url: "/wp-content/uploads/2026/01/a.png",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "relative uploads",
+  },
+  {
+    url: "https://source.example/wp-content/uploads/2026/01/a.png",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "absolute on a migratable host",
+  },
+  {
+    url: "//source.example/wp-content/uploads/2026/01/a.png",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "protocol-relative",
+  },
+  {
+    url: "http://www.source.example/wp-content/uploads/2026/01/a.png",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "http and www",
+  },
+  {
+    url: "/wp-content/uploads/2026/01/a.png?ver=2",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "query string",
+  },
+  {
+    url: "/wp-content/uploads/2026/01/a.png#frag",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "fragment",
+  },
+  {
+    url: "/wp-content/uploads/2026/01/east%20wing.jpg",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "encoded filename",
+  },
+  {
+    url: "/media/2026/01/a.png",
+    classification: "SUPPORTED",
+    accepts: true,
+    why: "the local output namespace",
+  },
+  {
+    url: "/downloads/a.pdf",
+    classification: "CONFIGURED",
+    accepts: true,
+    why: "a configured extra path",
+  },
+  {
+    url: "https://images.example.net/photo.jpg",
+    classification: "EXTERNAL",
+    accepts: true,
+    why: "an ordinary remote image",
+  },
+  {
+    url: "http://images.example.net/photo.jpg",
+    classification: "EXTERNAL",
+    accepts: false,
+    why: "external must be https",
+  },
+  {
+    url: "https://other.example/wp-content/uploads/2026/01/a.png",
+    classification: "EXTERNAL",
+    accepts: false,
+    why: "somebody else's uploads namespace",
+  },
+  {
+    url: "data:image/gif;base64,AAA",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "data URI",
+  },
+  {
+    url: "mailto:a@b.example",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "mailto",
+  },
+  {
+    url: "images/relative.png",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "document-relative",
+  },
+  {
+    url: "/wp-content/uploads/../../etc/passwd",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "path escape",
+  },
+  {
+    url: "/wp-content/uploads/2026/01/",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "a directory",
+  },
+  {
+    url: "/not-a-namespace/a.png",
+    classification: "UNSUPPORTED",
+    accepts: false,
+    why: "outside every namespace",
+  },
+];
+
+/** The profile the SCHEMA reads. The table above is written against it. */
+const SCHEMA_PROFILE: MediaProfile = {
+  uploadsPath: "/wp-content/uploads",
+  extraPaths: ["/downloads"],
+  migrateFrom: ["source.example"],
+  localBase: "/media",
+};
+
+check("THE CLASSIFIER AGREES WITH THE TABLE ON EVERY FORM", () => {
+  for (const row of AGREEMENT)
+    equal(
+      identifyAsset(row.url, SCHEMA_PROFILE).classification,
+      row.classification,
+      `${row.why}: ${row.url}`,
+    );
+});
+
+check("MEDIAREF AGREES WITH THE CLASSIFIER ON EVERY FORM", () => {
+  // The invariant this cleanup exists for. `mediaRefAccepts` reimplements the
+  // schema's decision from the classifier — which is exactly what the schema
+  // itself now does, so a divergence in either direction fails here.
+  for (const row of AGREEMENT) {
+    const identity = identifyAsset(row.url, SCHEMA_PROFILE);
+    const migrated =
+      identity.classification === "SUPPORTED" ||
+      identity.classification === "CONFIGURED";
+    const uploads = `${SCHEMA_PROFILE.uploadsPath}/`;
+    const accepted = migrated
+      ? true
+      : identity.classification === "EXTERNAL"
+        ? /^https:\/\//i.test(row.url) && !row.url.includes(uploads)
+        : false;
+    equal(accepted, row.accepts, `${row.why}: ${row.url}`);
+  }
+});
+
+check("M14: A MIGRATED ASSET THE SCHEMA REFUSES IS A CONTRADICTION", () => {
+  // Direction one. Anything the engine will copy must be storable in a
+  // `featuredImage`, or a migration cannot record its own output.
+  for (const row of AGREEMENT) {
+    const identity = identifyAsset(row.url, migration.media);
+    if (
+      identity.classification !== "SUPPORTED" &&
+      identity.classification !== "CONFIGURED"
+    )
+      continue;
+    const parsed = mediaRef.safeParse({ url: row.url });
+    assert(
+      parsed.success,
+      `${row.url} is ${identity.classification} and the schema refused it: ` +
+        `${parsed.success ? "" : parsed.error.issues[0]?.message}`,
+    );
+  }
+});
+
+check("M15: AN ASSET THE SCHEMA ACCEPTS IS NEVER UNSUPPORTED", () => {
+  // Direction two. The schema must not admit a URL the engine cannot act on —
+  // that is how `/wp-content/uploads/../../etc/passwd` used to validate.
+  for (const row of AGREEMENT) {
+    if (!mediaRef.safeParse({ url: row.url }).success) continue;
+    const identity = identifyAsset(row.url, migration.media);
+    assert(
+      identity.classification !== "UNSUPPORTED",
+      `${row.url} validated but is ${identity.classification}: ${identity.reason}`,
+    );
+  }
+});
+
+check("a variant url is judged by the same authority as its parent", () => {
+  // The rendition list used to accept any non-empty string, so a library could
+  // record a `srcset` candidate the engine would never copy.
+  const bad = mediaRef.safeParse({
+    url: "/wp-content/uploads/2026/01/a.png",
+    variants: [
+      { url: "/wp-content/uploads/../../etc/passwd", width: 1, height: 1 },
+    ],
+  });
+  assert(!bad.success, "a variant escaping the namespace is refused");
+  const good = mediaRef.safeParse({
+    url: "/wp-content/uploads/2026/01/a.png",
+    variants: [
+      {
+        url: "/wp-content/uploads/2026/01/a-300x200.png",
+        width: 300,
+        height: 200,
+      },
+    ],
+  });
+  assert(good.success, "and an ordinary rendition is not");
+});
+
+check("THE SCHEMA READS THE PROFILE, NOT A HARD-CODED PREFIX", () => {
+  // The hard-coded `/wp-content/uploads/` made a multisite library — the most
+  // ordinary non-default there is — unrepresentable. The classifier reads
+  // `media.uploadsPath`, so the schema does too.
+  const multisite = "/wp-content/uploads/sites/4/2026/01/a.png";
+  equal(
+    identifyAsset(multisite, {
+      ...SCHEMA_PROFILE,
+      uploadsPath: "/wp-content/uploads/sites/4",
+    }).key,
+    "uploads:2026/01/a.png",
+    "the configured prefix is stripped",
+  );
 });
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,8 @@
 //
 // `mediaUrl` rewrites the ORIGIN of a preserved reference and nothing else.
 // Nothing here fetches anything.
-import { migration } from "../../../../migration.config.ts";
+import { migration, type MediaProfile } from "../../../../migration.config.ts";
+import { identifyAsset } from "../media/asset-identity.ts";
 import { processEnvironment } from "../deployment/site-environment.ts";
 
 export const MEDIA_ORIGIN_KEY = "WPK_MEDIA_ORIGIN";
@@ -23,11 +24,20 @@ export const MEDIA_ORIGIN_KEY = "WPK_MEDIA_ORIGIN";
 export const LIVE_MEDIA_ORIGIN: string | undefined =
   migration.liveOrigin?.replace(/\/+$/, "");
 
-export const UPLOADS_PREFIX = "/wp-content/uploads/";
-
-const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
+/**
+ * The profile the ORIGIN strategy classifies against.
+ *
+ * `media.migrateFrom` names the hosts whose files this build COPIES. The
+ * origin strategy answers a different question — "is this a reference to the
+ * source library, whoever is serving it today" — and the live origin is by
+ * definition such a host even when nothing is being copied from it. So the
+ * host set is the union, and both strategies then share one classifier
+ * instead of keeping a namespace regex each.
+ *
+ * That mattered: this module's own regex did not recognise
+ * `//host/wp-content/uploads/…` at all, while four other modules in the kit
+ * handled protocol-relative URLs. One authority, one answer.
+ */
 /**
  * ASCII whitespace, and deliberately NOT `\s`: a URL inside an HTML attribute
  * is delimited by the quote, and a `srcset` candidate by an ASCII space —
@@ -35,21 +45,30 @@ const escapeRegExp = (value: string): string =>
  */
 const ASCII_SPACE = /[ \t\r\n\f\v]+/;
 
-const liveHost = LIVE_MEDIA_ORIGIN
-  ? new URL(LIVE_MEDIA_ORIGIN).host.replace(/^www\./, "")
-  : undefined;
+const ORIGIN_PROFILE: MediaProfile = {
+  ...migration.media,
+  migrateFrom: [
+    ...migration.media.migrateFrom,
+    ...(LIVE_MEDIA_ORIGIN === undefined
+      ? []
+      : [new URL(LIVE_MEDIA_ORIGIN).host]),
+  ],
+};
 
-/** An absolute reference on the live host, capturing the preserved path. */
-const PRESERVED_ABSOLUTE =
-  liveHost === undefined
-    ? undefined
-    : new RegExp(
-        `^https?:\\/\\/(?:www\\.)?${escapeRegExp(liveHost)}(\\/wp-content\\/uploads\\/[^ \\t\\r\\n\\f\\v"'<>]*)$`,
-        "i",
-      );
-
-/** A relative reference into the preserved namespace. */
-const PRESERVED_RELATIVE = /^\/wp-content\/uploads\/[^ \t\r\n\f\v"'<>]*$/;
+/**
+ * The classification of a reference for the ORIGIN strategy, or undefined when
+ * it is not the source library's.
+ *
+ * `output` is excluded on purpose: a reference already at this site's own
+ * media path has been migrated, and prefixing a remote origin onto it would
+ * send the browser back to a server the migration just finished leaving.
+ */
+const preserved = (url: string) => {
+  const identity = identifyAsset(url.trim(), ORIGIN_PROFILE);
+  if (identity.namespace === "uploads" || identity.namespace === "extra")
+    return identity;
+  return undefined;
+};
 
 /** The origin uploads are served from, or undefined when none is configured. */
 export function mediaOrigin(
@@ -67,11 +86,7 @@ export function mediaOrigin(
 
 /** True for a reference inside the preserved uploads namespace. */
 export function isPreservedMedia(url: string): boolean {
-  const trimmed = url.trim();
-  return (
-    PRESERVED_RELATIVE.test(trimmed) ||
-    (PRESERVED_ABSOLUTE?.test(trimmed) ?? false)
-  );
+  return preserved(url) !== undefined;
 }
 
 /**
@@ -86,15 +101,12 @@ export function isPreservedMedia(url: string): boolean {
  * configured origin pass `mediaOrigin()`, which says so.
  */
 export function mediaUrl(url: string, origin: string | undefined): string {
-  const trimmed = url.trim();
-  const absolute = PRESERVED_ABSOLUTE?.exec(trimmed);
-  if (absolute)
-    return origin === undefined
-      ? (absolute[1] ?? trimmed)
-      : `${origin}${absolute[1]}`;
-  if (PRESERVED_RELATIVE.test(trimmed))
-    return origin === undefined ? trimmed : `${origin}${trimmed}`;
-  return url;
+  const identity = preserved(url);
+  if (identity?.path === undefined) return url;
+  // The source's own path, with the host replaced — or removed, when there is
+  // no origin, which is what makes an absolute reference relative again.
+  const tail = `${identity.path}${identity.query ?? ""}${identity.fragment ?? ""}`;
+  return origin === undefined ? tail : `${origin}${tail}`;
 }
 
 const ATTRIBUTE =

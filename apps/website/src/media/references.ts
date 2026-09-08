@@ -116,6 +116,38 @@ export function findReferences(document: string): AssetReference[] {
   return found;
 }
 
+/**
+ * Every reference in a document that is really an ASSET, classified.
+ *
+ * The one place the `href` rule lives. WordPress's "link to media file"
+ * produces an `<a href>` naming a real file, and an ordinary internal link to
+ * another page produces the identical attribute — so an `href` counts as media
+ * only when the engine owns what it names. Without that rule every link on the
+ * site is reported as unsupported media, which buries the findings that
+ * matter; and internal links already have a gate of their own in
+ * `preview-audit`.
+ *
+ * Shared by the content-tree scanner and the media manifest, because they were
+ * about to answer this question two different ways.
+ */
+export function assetReferencesIn(
+  document: string,
+  profile: MediaProfile,
+): { reference: AssetReference; identity: AssetIdentity }[] {
+  const found: { reference: AssetReference; identity: AssetIdentity }[] = [];
+  for (const reference of findReferences(document)) {
+    const identity = identifyAsset(reference.url, profile);
+    if (
+      reference.kind === "href" &&
+      identity.classification !== "SUPPORTED" &&
+      identity.classification !== "CONFIGURED"
+    )
+      continue;
+    found.push({ reference, identity });
+  }
+  return found;
+}
+
 export interface RewriteResult {
   readonly html: string;
   /** Every reference the document held, with what was decided about it. */
@@ -217,20 +249,14 @@ export function distinctAssets(
 export function assetConflicts(
   identities: readonly AssetIdentity[],
 ): { key: string; sources: string[] }[] {
+  // The host comes from the classifier rather than being re-parsed here: a
+  // second `new URL()` is a second place for the `www.` and scheme rules to
+  // drift away from the ones that decided the classification.
   const hosts = new Map<string, Set<string>>();
   for (const identity of identities) {
     if (identity.key === undefined) continue;
-    let host = "";
-    try {
-      const absolute = identity.source.startsWith("//")
-        ? `https:${identity.source}`
-        : identity.source;
-      host = /^https?:\/\//i.test(absolute) ? new URL(absolute).host : "";
-    } catch {
-      host = "";
-    }
     const seen = hosts.get(identity.key) ?? new Set<string>();
-    seen.add(host.toLowerCase().replace(/^www\./, ""));
+    seen.add(identity.host ?? "");
     hosts.set(identity.key, seen);
   }
 

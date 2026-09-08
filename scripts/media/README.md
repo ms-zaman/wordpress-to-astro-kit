@@ -64,6 +64,43 @@ Rewriting one would point this site at a file it never captured.
 
 A root-relative path needs no host and is always the site's own.
 
+## One authority, and what it replaced
+
+`identifyAsset` is the only answer to *"is this URL a migratable or local asset,
+and which asset is it?"* Three places used to answer it independently:
+
+| | its rule | what it got wrong |
+| --- | --- | --- |
+| `content-model/shared.ts` (`mediaRef`) | its own `^(?:<liveOrigin>)?/wp-content/uploads/[^?#]+$` plus a `url.includes("wp-content/uploads")` substring test | measured across 18 forms, it disagreed with the engine on **11** |
+| `rendering/media.ts` | two regexes built from `liveOrigin` | did not recognise `//host/…` at all |
+| `pages/media-manifest.json.ts` | its own extension allowlist and host parse | assumed every asset is an image or a PDF; skipped custom types and unbuilt locales |
+
+Three of the schema's disagreements were live defects:
+
+```
+/media/2026/01/a.png                  REJECTED — the engine's own output form,
+                                      so a migrated image could not be stored
+                                      in a featuredImage
+/wp-content/uploads/../../etc/passwd  ACCEPTED — a path escape
+/wp-content/uploads/2026/01/          ACCEPTED — a directory
+```
+
+plus a hard-coded `/wp-content/uploads/` that ignored `media.uploadsPath`, so a
+**multisite** library was unrepresentable.
+
+`mediaRef` keeps exactly one rule of its own, and it is deliberately not a
+namespace rule: a media URL in the uploads namespace **on a host
+`migrateFrom` does not list** is refused. That is either your library rewritten
+onto a CDN — a decision `WPK_MEDIA_ORIGIN` owns at build time, not the content
+tree — or somebody else's library stored as this entry's image. A *body* may
+reference another site's uploads freely; `featuredImage`, `avatar` and
+`ogImage` are curated fields.
+
+**`/assets/` is gone.** It was an address space `mediaRef` accepted and nothing
+implemented — no directory, no copy step, nothing served it. A file you keep in
+the repository goes in `apps/website/public/<localBase>/`, which the classifier
+recognises as the `output` namespace.
+
 ## Reference forms that are read and rewritten
 
 `src` · `srcset` (every candidate, descriptors preserved) · `href` (only when

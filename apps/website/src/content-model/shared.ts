@@ -7,6 +7,7 @@ import { z } from "astro/zod";
 
 import localeRegistryData from "../../../../content/config/locales.json" with { type: "json" };
 import { migration } from "../../../../migration.config.ts";
+import { identifyAsset } from "../media/asset-identity.ts";
 
 /**
  * A locale code, in the form an `<html lang>` attribute takes.
@@ -150,50 +151,81 @@ export const entityProvenance = provenance.refine(
 /** How a body is rendered: WordPress's HTML verbatim (the default), or Markdown. */
 export const bodyFormat = z.enum(["html", "markdown"]).default("html");
 
-export const UPLOADS_NAMESPACE = "/wp-content/uploads/";
-
-const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const liveOrigin = migration.liveOrigin?.replace(/\/+$/, "");
-
 /**
- * Preserved media namespace. A reference that carries the WordPress uploads
- * path must be byte-identical to extraction output: relative, or absolute on
- * the live origin. A CDN host, a rewritten path or an added query string is a
- * validation failure — not an improvement. Which host SERVES the namespace
- * after cutover is `rendering/media.ts`'s one variable.
+ * A media reference, judged by the SAME authority the media engine uses.
+ *
+ * ## What this replaces, and why it mattered
+ *
+ * This schema used to carry its own uploads regex —
+ * `^(?:<liveOrigin>)?/wp-content/uploads/[^?#]+$` plus a
+ * `url.includes("wp-content/uploads")` substring test — while
+ * `media/asset-identity.ts` became the engine's authority on the same
+ * question. Measured across eighteen reference forms, the two disagreed on
+ * ELEVEN, and three of those were live defects:
+ *
+ *   `/media/2026/01/a.png`                  REJECTED, and it is the engine's
+ *                                           own output form — so a migrated
+ *                                           image could not be stored here
+ *   `/wp-content/uploads/../../etc/passwd`  ACCEPTED — a path escape
+ *   `/wp-content/uploads/2026/01/`          ACCEPTED — a directory
+ *
+ * plus a hard-coded `/wp-content/uploads/` that ignored `media.uploadsPath`,
+ * so a multisite library was unrepresentable, and a refusal of `?` and `#`
+ * that the engine allows.
+ *
+ * There is now one answer to "is this URL a migratable or local asset, and
+ * which asset is it": `identifyAsset`.
+ *
+ * ## The one rule that is NOT about the namespace
+ *
+ * A media URL in the uploads namespace on a host this build does not migrate
+ * from is refused, and that is content hygiene rather than classification. It
+ * is either a rewrite of your own library onto a CDN — a decision the media
+ * seam owns, not the content tree — or somebody else's library being stored as
+ * if it were this entry's image. Both are things a curated field must not
+ * carry, and neither is a question about which namespace the URL is in.
+ *
+ * A body may reference another site's uploads freely; this is `featuredImage`,
+ * `avatar` and `ogImage`, which somebody chose.
  */
-const preservedUploadsPattern = new RegExp(
-  `^(?:${liveOrigin ? escapeRegExp(liveOrigin) : ""})?/wp-content/uploads/[^?#]+$`,
-);
+const assetProblem = (url: string): string | undefined => {
+  const identity = identifyAsset(url, migration.media);
+  if (
+    identity.classification === "SUPPORTED" ||
+    identity.classification === "CONFIGURED"
+  )
+    return undefined;
 
-const isPreservedNamespace = (url: string) =>
-  url.includes("wp-content/uploads");
+  if (identity.classification === "EXTERNAL") {
+    if (!/^https:\/\//i.test(url))
+      return "an external media URL must be https://";
+    const uploads = `/${migration.media.uploadsPath.replace(/^\/+|\/+$/g, "")}/`;
+    if (url.includes(uploads))
+      return (
+        `it is in the uploads namespace on a host \`media.migrateFrom\` does ` +
+        `not list. That is either your own library rewritten onto another ` +
+        `host — which \`WPK_MEDIA_ORIGIN\` decides at build time, not the ` +
+        `content tree — or somebody else's library stored as this entry's ` +
+        `image. Keep the source's own path, or name the host in ` +
+        `migration.config.ts.`
+      );
+    return undefined;
+  }
+
+  return (
+    identity.reason ??
+    "it is not a migratable asset, a local asset, or an https:// external URL"
+  );
+};
 
 export const mediaRef = z.strictObject({
   url: z
     .string()
     .min(1)
-    .refine(
-      (url) => !isPreservedNamespace(url) || preservedUploadsPattern.test(url),
-      {
-        message:
-          "preserved-namespace media URLs must stay verbatim: `/wp-content/uploads/...` " +
-          "relative or absolute on the live origin named in migration.config.ts, with no " +
-          "host, path or query rewriting",
-      },
-    )
-    .refine(
-      (url) =>
-        isPreservedNamespace(url) ||
-        url.startsWith("/assets/") ||
-        /^https:\/\//.test(url),
-      {
-        message:
-          "media url must be a preserved uploads path, a /assets/ repository path, or an https:// external URL",
-      },
-    ),
+    .refine((url) => assetProblem(url) === undefined, {
+      error: (issue) =>
+        `media url "${String(issue.input)}" is not usable: ${assetProblem(String(issue.input))}`,
+    }),
   alt: z.string().optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
@@ -207,7 +239,14 @@ export const mediaRef = z.strictObject({
   variants: z
     .array(
       z.strictObject({
-        url: z.string().min(1),
+        // The same authority, for the same reason: a rendition is an asset.
+        url: z
+          .string()
+          .min(1)
+          .refine((url) => assetProblem(url) === undefined, {
+            error: (issue) =>
+              `variant url "${String(issue.input)}" is not usable: ${assetProblem(String(issue.input))}`,
+          }),
         width: z.number().int().positive(),
         height: z.number().int().positive(),
       }),

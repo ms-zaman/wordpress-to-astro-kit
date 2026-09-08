@@ -13,7 +13,7 @@ import {
   identifyAsset,
   type AssetIdentity,
 } from "../../apps/website/src/media/asset-identity.ts";
-import { findReferences } from "../../apps/website/src/media/references.ts";
+import { assetReferencesIn } from "../../apps/website/src/media/references.ts";
 import type { MediaProfile } from "../../migration.config.ts";
 
 /** One reference, and where a person would go to change it. */
@@ -87,22 +87,10 @@ export function scanContentTree(
     const block = FRONTMATTER.exec(raw);
     const body = block === null ? raw : raw.slice(block[0].length);
 
-    for (const reference of findReferences(body)) {
-      const identity = identifyAsset(reference.url, profile);
-      // An `href` is an asset reference only when it names a file this engine
-      // owns. WordPress's "link to media file" produces one; an ordinary
-      // internal link to another page produces the same attribute and is not
-      // an asset at all. Reporting `/about/team/` as UNSUPPORTED media would
-      // bury the real findings under every link on the site — and internal
-      // links already have a gate, in `preview-audit`.
-      if (
-        reference.kind === "href" &&
-        identity.classification !== "SUPPORTED" &&
-        identity.classification !== "CONFIGURED"
-      )
-        continue;
+    // The `href` rule lives in `assetReferencesIn`, shared with the media
+    // manifest, because the two were about to answer it differently.
+    for (const { reference, identity } of assetReferencesIn(body, profile))
       found.push({ identity, where, field: reference.kind });
-    }
 
     // Front matter carries `featuredImage.url` and its `variants[].url`. It is
     // read with the same crude line scan the content contract uses — a full

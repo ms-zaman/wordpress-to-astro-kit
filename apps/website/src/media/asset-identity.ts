@@ -77,6 +77,31 @@ export interface AssetIdentity {
   readonly key?: string;
   /** The path this site will serve it at, for a class that is migrated. */
   readonly local?: string;
+  /**
+   * Which namespace it was found in.
+   *
+   * `SUPPORTED` covers two genuinely different cases and a caller sometimes
+   * needs to tell them apart: a file still in the SOURCE's uploads path, and
+   * one already at this site's own output path. The media-origin strategy
+   * re-hosts the first and must leave the second alone.
+   */
+  readonly namespace?: "uploads" | "extra" | "output";
+  /**
+   * The root-relative source path, with any host removed.
+   *
+   * `/wp-content/uploads/2026/01/a.png` for every spelling of it. What the
+   * origin strategy prefixes a host onto, so that it does not need a namespace
+   * regex of its own.
+   */
+  readonly path?: string;
+  /**
+   * The host the reference named, or `""` for a root-relative one.
+   *
+   * Returned rather than re-parsed by callers: the conflict check needs it,
+   * and a second `new URL()` somewhere else is a second place for the `www.`
+   * and scheme rules to drift.
+   */
+  readonly host?: string;
   /** The query string, kept because it may be meaningful. */
   readonly query?: string;
   readonly fragment?: string;
@@ -157,6 +182,8 @@ export function identifyAsset(
     absolutePath: string,
     classification: "SUPPORTED" | "CONFIGURED",
     namespace: string,
+    which: "uploads" | "extra" | "output",
+    host = "",
   ): AssetIdentity => {
     const relative = absolutePath.slice(namespace.length);
     if (relative === "" || relative.endsWith("/"))
@@ -177,6 +204,9 @@ export function identifyAsset(
       classification,
       key: `uploads:${relative}`,
       local: `/${trimSlashes(profile.localBase)}/${relative}`,
+      namespace: which,
+      path: absolutePath,
+      host,
       ...(query === "" ? {} : { query }),
       ...(fragment === "" ? {} : { fragment }),
     };
@@ -207,18 +237,28 @@ export function identifyAsset(
       return {
         source: raw,
         classification: "EXTERNAL",
+        host: hostKey(url.host),
+        path: url.pathname,
+        ...(query === "" ? {} : { query }),
+        ...(fragment === "" ? {} : { fragment }),
         reason: `${url.host} is not in media.migrateFrom, so the reference is left as it is`,
       };
+    const named = hostKey(url.host);
     if (url.pathname.startsWith(uploads))
-      return owned(url.pathname, "SUPPORTED", uploads);
+      return owned(url.pathname, "SUPPORTED", uploads, "uploads", named);
     for (const extra of profile.extraPaths) {
       const namespace = `/${trimSlashes(extra)}/`;
       if (url.pathname.startsWith(namespace))
-        return owned(url.pathname, "CONFIGURED", namespace);
+        return owned(url.pathname, "CONFIGURED", namespace, "extra", named);
     }
+    const localNamespace = `/${trimSlashes(profile.localBase)}/`;
+    if (url.pathname.startsWith(localNamespace))
+      return owned(url.pathname, "SUPPORTED", localNamespace, "output", named);
     return {
       source: raw,
       classification: "EXTERNAL",
+      host: hostKey(url.host),
+      path: url.pathname,
       reason:
         `${url.host} is migratable but ${url.pathname} is outside ` +
         `media.uploadsPath and media.extraPaths`,
@@ -227,18 +267,20 @@ export function identifyAsset(
 
   // Root-relative. The site's own namespace, whatever host served it.
   if (path.startsWith("/")) {
-    if (path.startsWith(uploads)) return owned(path, "SUPPORTED", uploads);
+    if (path.startsWith(uploads))
+      return owned(path, "SUPPORTED", uploads, "uploads");
     for (const extra of profile.extraPaths) {
       const namespace = `/${trimSlashes(extra)}/`;
       if (path.startsWith(namespace))
-        return owned(path, "CONFIGURED", namespace);
+        return owned(path, "CONFIGURED", namespace, "extra");
     }
     // Already at the output path. A reference that has been migrated already —
     // or an asset committed to `public/` by hand, like the kit's own sample —
     // is not "unsupported": it is a file this site owns and must therefore
     // still be there. Recognising it is what lets `verify` check it.
     const local = `/${trimSlashes(profile.localBase)}/`;
-    if (path.startsWith(local)) return owned(path, "SUPPORTED", local);
+    if (path.startsWith(local))
+      return owned(path, "SUPPORTED", local, "output");
     return {
       source: raw,
       classification: "UNSUPPORTED",
