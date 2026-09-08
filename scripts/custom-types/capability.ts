@@ -43,6 +43,26 @@ export const INTERNAL_TYPES = [
   "oembed_cache",
   "user_request",
   "patterns_ai_data",
+  // Editor and page-builder machinery. These are registered by plugins rather
+  // than by core, and they are internal for exactly the same reason core's
+  // are: they hold templates, snippets and saved layouts, never a public URL.
+  //
+  // Measured on a live install, five of them appeared as "unconfigured" — so
+  // the census told a migrator that publishing `elementor_library` as a set of
+  // public pages was a decision waiting to be made. It is not a decision; it
+  // is noise, and noise in a report whose value is that its gaps are real.
+  //
+  // Named explicitly, like core's, rather than filtered on a `public` flag:
+  // these types report inconsistent visibility and a flag would classify a
+  // genuine custom type wrongly the day a plugin set it.
+  "elementor_library",
+  "elementor_snippet",
+  "e-floating-buttons",
+  "templately_library",
+  "rm_content_editor",
+  "acf-field",
+  "acf-field-group",
+  "wpcf7_contact_form",
 ] as const;
 
 export type Capability =

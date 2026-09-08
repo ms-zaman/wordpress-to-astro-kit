@@ -61,6 +61,7 @@ for a build the run never loaded. So a busy port is a fatal, named error, and
 | [`taxonomies/`](taxonomies/)                   | What the kit can and cannot do with a WordPress taxonomy — measured against core, stated as a boundary                                        |
 | [`identity/`](identity/)                       | Identity is not a slug: where uniqueness and ownership are enforced, and what happens on a collision                                          |
 | [`provenance/`](provenance/)                   | Where did this page come from? Source entity → content entry → route → output, and the twelve mutations that break the chain                  |
+| [`content-transform/`](content-transform/)     | A capture becomes the content tree: WordPress's own shapes, and every row leaving either an entry or an exclusion with a reason               |
 | [`core-taxonomy/`](core-taxonomy/)             | WordPress's own `category` and `post_tag`, in the same model as yours — and the hierarchy the kit could not represent                         |
 | [`media/`](media/)                             | The asset migration engine: discover → identify → own → capture → emit → rewrite → verify, six classifications and no warnings                |
 | [`stranger-site/`](stranger-site/)             | A site this kit has never seen, so an abstraction that only fits the kit's own fixtures fails                                                 |

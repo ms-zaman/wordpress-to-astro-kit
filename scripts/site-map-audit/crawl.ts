@@ -189,19 +189,52 @@ export async function crawlLiveSite(
     sitemapUrls = SITEMAP_FALLBACKS.map((suffix) => `${origin}${suffix}`);
   }
 
-  const seenSitemaps = new Set<string>();
+  // `attempted` is not `read`.
+  //
+  // Measured on a real site: `robots.txt` advertised `/sitemap_index.xml`, that
+  // URL answered **404 with a 115KB HTML error page**, and this loop reported
+  // "1 sitemap document(s) read". Three things combined to produce a claim the
+  // crawl could not support — the set was incremented BEFORE the fetch, the
+  // only check was `body === undefined` (a 404 page has a body), and a document
+  // with no `<loc>` contributed nothing without saying so.
+  //
+  // Discovery is the first stage, so a false claim here is the worst kind: the
+  // fallback link-crawl is bounded on purpose, and a reader who believes the
+  // sitemap was read has no reason to look at the small number of URLs it
+  // found. The counts below are of documents that answered 200 AND parsed as a
+  // sitemap, and every other outcome is stated.
+  const attemptedSitemaps = new Set<string>();
+  const readSitemaps = new Set<string>();
   const queue = [...sitemapUrls];
   while (queue.length > 0 && reader.requests < maxRequests) {
     const url = queue.shift()!;
-    if (seenSitemaps.has(url)) continue;
-    seenSitemaps.add(url);
+    if (attemptedSitemaps.has(url)) continue;
+    attemptedSitemaps.add(url);
     progress(`sitemap ${url}`);
     const response = await reader.get(url);
+    if (response.status !== 200) {
+      notes.push(
+        `sitemap ${url} answered ${response.status}, so it was NOT read. ` +
+          "The URL a site advertises and the URL it serves are different " +
+          "facts; discovery below fell back to following links, which is " +
+          "bounded and will not find a page nothing links to.",
+      );
+      continue;
+    }
     if (response.body === undefined) {
       notes.push(`sitemap ${url} returned ${response.status} and no body`);
       continue;
     }
     const document = readSitemap(response.body);
+    if (!document.isIndex && document.locations.length === 0) {
+      notes.push(
+        `sitemap ${url} answered 200 but holds no <loc> elements — it is not a ` +
+          "sitemap. A soft 404 that serves an HTML error page with status 200 " +
+          "looks exactly like this.",
+      );
+      continue;
+    }
+    readSitemaps.add(url);
     if (document.isIndex) {
       // One level of nesting. Deeper is a sitemap index of sitemap indexes,
       // which no WordPress plugin writes, and following arbitrarily deep is
@@ -212,7 +245,16 @@ export async function crawlLiveSite(
     for (const location of document.locations)
       note(location, `sitemap:${new URL(url).pathname}`);
   }
-  notes.push(`${seenSitemaps.size} sitemap document(s) read`);
+  notes.push(
+    `${readSitemaps.size} sitemap document(s) read of ${attemptedSitemaps.size} attempted`,
+  );
+  if (readSitemaps.size === 0)
+    notes.push(
+      "NO SITEMAP WAS READ. Every URL below was found by following links from " +
+        "the site's own pages, which reaches only what is linked and only as " +
+        "deep as `--waves` allows. Treat this inventory as a floor, not a " +
+        "census: check the source's own counts with `pnpm content:census`.",
+    );
 
   // --- Seed 2: the front page, always ---------------------------------------
   note(`${origin}/`, "seed");

@@ -2,16 +2,19 @@
 //
 // Bodies are WordPress HTML — block markup, classic-editor markup or a page
 // builder's rendered output — not Markdown, and they are rendered as HTML so
-// the page says what the source says. Five preparations, all rendering
+// the page says what the source says. Six preparations, all rendering
 // concerns rather than content edits:
 //
 //   1. the MEDIA ENGINE (`src/media/`) — every reference the migration owns is
 //      rewritten to the path this site serves it at;
 //   2. the media origin seam (`media.ts`) — for whatever the engine did not
 //      take, the one place the host serving the uploads library is decided;
-//   3. every `<img>` with no `loading` attribute is deferred;
-//   4. WordPress's emoji IMAGES become the characters they replaced;
-//   5. an `<h1>` inside a body becomes an `<h2>`: the page owns its one h1,
+//   3. INTERNAL LINKS (`links.ts`) — an absolute link to the source site
+//      becomes root-relative, so the migrated site does not send its readers
+//      back to the server it is replacing;
+//   4. every `<img>` with no `loading` attribute is deferred;
+//   5. WordPress's emoji IMAGES become the characters they replaced;
+//   6. an `<h1>` inside a body becomes an `<h2>`: the page owns its one h1,
 //      and demoting a second changes no word the reader sees.
 //
 // ## Why the engine runs FIRST, and why both still exist
@@ -31,6 +34,7 @@
 // nothing and this behaves exactly as it did before it existed.
 import { migration } from "../../../../migration.config.ts";
 import { rewriteReferences } from "../media/references.ts";
+import { internaliseLinks } from "./links.ts";
 import {
   deferBodyImages,
   inlineEmojiImages,
@@ -42,7 +46,12 @@ export function prepareBody(
   html: string,
   origin: string | undefined = mediaOrigin(),
 ): string {
-  const migrated = rewriteReferences(html.trim(), migration.media).html;
+  // Media first — it owns the uploads namespace and rewrites what it copies.
+  // Then the links, over whatever absolute source-origin references are left,
+  // which are the internal PAGE links a WordPress editor stores absolutely.
+  const migrated = internaliseLinks(
+    rewriteReferences(html.trim(), migration.media).html,
+  );
   return inlineEmojiImages(
     deferBodyImages(rewriteMediaHtml(migrated, origin)),
   ).replace(

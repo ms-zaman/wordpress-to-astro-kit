@@ -216,6 +216,8 @@ export class WordPressRest {
       limit?: number;
       perPage?: number;
       onPage?: (page: number, of: number) => void;
+      /** `_embed` value — `author` rides the entry request, saving one per author. */
+      embed?: string;
     } = {},
   ): Promise<{ items: T[]; declaredTotal: number | null; pages: number }> {
     const perPage = Math.min(options.perPage ?? 100, 100);
@@ -228,7 +230,8 @@ export class WordPressRest {
         this.url(restBase, {
           per_page: String(perPage),
           page: String(page),
-          _fields: fields.join(","),
+          ...(fields.length === 0 ? {} : { _fields: fields.join(",") }),
+          ...(options.embed === undefined ? {} : { _embed: options.embed }),
         }),
         // A page of a collection is a request whose failure would silently
         // shorten the capture, so it is one of the two places a retry is
@@ -256,6 +259,44 @@ export class WordPressRest {
         options.limit === undefined ? items : items.slice(0, options.limit),
       declaredTotal,
       pages: totalPages,
+    };
+  }
+
+  /**
+   * One author, resolved by id.
+   *
+   * `wp/v2/users/<id>` first, and the `_embed` fallback when it refuses —
+   * which it very often does. Measured on a live install: the users collection
+   * answered 302 to an anonymous reader (a hardening plugin blocking author
+   * enumeration) while the same author's name, slug and description came back
+   * happily embedded in a post.
+   *
+   * That mattered: the content model REQUIRES an author registry, and
+   * `nicename` is what `/author/<nicename>/` is keyed by — so without this the
+   * whole byline and every author archive were unmigratable on a site that had
+   * done nothing unusual.
+   */
+  async author(id: number): Promise<{
+    id: number;
+    slug?: string;
+    name?: string;
+    description?: string;
+    status: number;
+  }> {
+    const { value, status } = await this.#json<{
+      slug?: string;
+      name?: string;
+      description?: string;
+    }>(this.url(`users/${id}`), true);
+    if (value === null) return { id, status };
+    return {
+      id,
+      status,
+      ...(value.slug === undefined ? {} : { slug: value.slug }),
+      ...(value.name === undefined ? {} : { name: value.name }),
+      ...(value.description === undefined
+        ? {}
+        : { description: value.description }),
     };
   }
 

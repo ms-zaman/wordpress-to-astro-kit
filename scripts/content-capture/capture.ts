@@ -35,6 +35,22 @@ export const ENTRY_FIELDS = [
   "excerpt",
   "author",
   "featured_media",
+  /**
+   * The page hierarchy, and the taxonomy assignments.
+   *
+   * `parent` is how WordPress nests pages. `categories` and `tags` are the
+   * REST field names for the two core taxonomies — a custom taxonomy appears
+   * under its own `rest_base`, which `captureType` appends from the type's own
+   * declaration rather than guessing.
+   *
+   * Their absence was a silent, total loss: the capture recorded the taxonomy
+   * REGISTRIES faithfully and not one entry's membership in them, so every
+   * post looked uncategorised and a transform could not migrate a single
+   * taxonomy relationship. `_fields` had simply never listed them.
+   */
+  "parent",
+  "categories",
+  "tags",
 ] as const;
 
 export const TERM_FIELDS = [
@@ -58,6 +74,11 @@ export interface CapturedEntry {
   readonly excerpt?: { rendered?: string };
   readonly author?: number;
   readonly featured_media?: number;
+  /** The parent page's id, for a hierarchical type. */
+  readonly parent?: number;
+  /** Core taxonomy assignments, as WordPress names them in REST. */
+  readonly categories?: readonly number[];
+  readonly tags?: readonly number[];
   /** Every taxonomy's term ids, keyed by taxonomy name. */
   readonly terms?: Readonly<Record<string, readonly number[]>>;
   /**
@@ -104,6 +125,8 @@ export interface CaptureOptions {
   readonly taxonomies?: readonly Taxonomy[];
   /** Resolve `featured_media` ids to their URLs. One request each. */
   readonly withMedia?: boolean;
+  /** REST bases of the taxonomies attached to this type, for `_fields`. */
+  readonly taxonomyRestBases?: readonly string[];
   /** Fetch the rendered page for every entry whose body looks incomplete. */
   readonly withIncompletePages?: boolean;
   readonly onProgress?: (line: string) => void;
@@ -126,9 +149,19 @@ export async function capturePostType(
   const notes: string[] = [];
 
   progress(`reading ${options.restBase}`);
+  // A custom taxonomy's assignments arrive under its own REST base, which only
+  // the type itself can name. Requesting a field a type does not have is
+  // harmless — WordPress omits it — so this is additive, never a guess.
+  const entryFields = [
+    ...ENTRY_FIELDS,
+    ...(options.taxonomyRestBases ?? []).filter(
+      (base) => !ENTRY_FIELDS.includes(base as (typeof ENTRY_FIELDS)[number]),
+    ),
+  ];
+
   const { items, declaredTotal } = await rest.collection<CapturedEntry>(
     options.restBase,
-    ENTRY_FIELDS,
+    entryFields,
     {
       limit: options.limit,
       onPage: (page, of) =>
@@ -197,6 +230,71 @@ export async function capturePostType(
       );
   }
 
+  // --- authors ---------------------------------------------------------------
+  //
+  // The content model requires an author registry, and `nicename` is what an
+  // author archive's URL is keyed by. `wp/v2/users` is closed to anonymous
+  // readers on a great many sites — measured: 302 on a live install — so this
+  // asks for each author individually and falls back to the copy WordPress
+  // embeds in the post itself, which the same site served without complaint.
+  const authors: {
+    id: number;
+    slug?: string;
+    name?: string;
+    description?: string;
+    status: number;
+  }[] = [];
+  const authorIds = [
+    ...new Set(
+      items
+        .map((entry) => (entry as { author?: number }).author)
+        .filter((id): id is number => typeof id === "number" && id > 0),
+    ),
+  ].sort((left, right) => left - right);
+  if (authorIds.length > 0) {
+    progress(`resolving ${authorIds.length} author(s)`);
+    for (const id of authorIds) authors.push(await rest.author(id));
+    const unresolved = authors.filter((row) => row.slug === undefined);
+    if (unresolved.length > 0) {
+      // The embedded copy. `_embed=author` rides along on the entry request,
+      // so this is one more page of entries rather than one request per author.
+      progress(
+        `${unresolved.length} author(s) refused; reading the embedded copy`,
+      );
+      const embedded = await rest.collection<{
+        author?: number;
+        _embedded?: {
+          author?: {
+            id: number;
+            slug?: string;
+            name?: string;
+            description?: string;
+          }[];
+        };
+      }>(options.restBase, [], { perPage: 100, embed: "author" });
+      const byId = new Map<
+        number,
+        { id: number; slug?: string; name?: string; description?: string }
+      >();
+      for (const entry of embedded.items)
+        for (const one of entry._embedded?.author ?? [])
+          if (one.id !== undefined) byId.set(one.id, one);
+      for (let index = 0; index < authors.length; index += 1) {
+        const found = byId.get(authors[index]!.id);
+        if (authors[index]!.slug === undefined && found !== undefined)
+          authors[index] = { ...authors[index]!, ...found };
+      }
+    }
+    const stillMissing = authors.filter((row) => row.slug === undefined);
+    if (stillMissing.length > 0)
+      notes.push(
+        `${stillMissing.length} author(s) could not be resolved by either the users ` +
+          "route or the embedded copy. Posts by them cannot be transformed: the " +
+          "content model needs a registry row, and inventing one would put a " +
+          "byline on the site that names nobody.",
+      );
+  }
+
   // --- featured media --------------------------------------------------------
   const media: {
     id: number;
@@ -240,6 +338,7 @@ export async function capturePostType(
     received: items.length,
     entries,
     taxonomies,
+    authors,
     media,
     bodies,
     notes,

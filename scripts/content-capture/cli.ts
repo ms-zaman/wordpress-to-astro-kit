@@ -280,6 +280,12 @@ const result = await capturePostType(
     taxonomies: allTaxonomies.filter((taxonomy) =>
       type.taxonomies.includes(taxonomy.name),
     ),
+    // The REST field each taxonomy's assignments arrive under. Taken from the
+    // taxonomy's own `rest_base`, because the field name is not the taxonomy
+    // name: `post_tag` is served as `tags`.
+    taxonomyRestBases: allTaxonomies
+      .filter((taxonomy) => type.taxonomies.includes(taxonomy.name))
+      .map((taxonomy) => taxonomy.restBase),
     withMedia: !has("--no-media"),
     withIncompletePages: !has("--no-pages"),
     onProgress: (line) => process.stdout.write(`  ${line}\n`),

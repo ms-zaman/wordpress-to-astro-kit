@@ -12,6 +12,7 @@ import path from "node:path";
 
 import { buildContentIndex } from "../src/content-index/adapters.ts";
 import { paginate, pageHref } from "../src/content-index/pagination.ts";
+import { internaliseLinks } from "../src/rendering/links.ts";
 import { relatedContent } from "../src/content-index/related.ts";
 import { buildManifest, validateManifest } from "../src/deployment/manifest.ts";
 import {
@@ -843,6 +844,51 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+console.log("\nInternal links: the source site's own URLs, made this site's");
+{
+  const origin = "https://source.example";
+  const html = internaliseLinks(
+    [
+      '<a href="https://source.example/support/">support</a>',
+      '<a href="https://www.source.example/a/?x=1#f">query and fragment</a>',
+      '<a href="//source.example/b/">protocol-relative</a>',
+      '<a href="https://other.example/c/">somebody else</a>',
+      '<img src="https://source.example/wp-content/plugins/p/i.png">',
+      '<a href="/already/">already relative</a>',
+    ].join("\n"),
+    origin,
+  );
+  check(
+    "an absolute link to the source becomes root-relative",
+    html.includes('href="/support/"'),
+  );
+  check(
+    "the query and fragment survive, and www is the same host",
+    html.includes('href="/a/?x=1#f"'),
+  );
+  check(
+    "a protocol-relative self link is the same site",
+    html.includes('href="/b/"'),
+  );
+  check(
+    "another site is left alone",
+    html.includes('href="https://other.example/c/"'),
+  );
+  check(
+    "A SOURCE-CMS PATH IS LEFT ABSOLUTE, BECAUSE THIS SITE DOES NOT SERVE IT",
+    html.includes('src="https://source.example/wp-content/plugins/p/i.png"'),
+  );
+  check(
+    "an already-relative link is untouched",
+    html.includes('href="/already/"'),
+  );
+  check(
+    "with no configured origin, nothing is rewritten",
+    internaliseLinks('<a href="https://source.example/x/">x</a>', undefined) ===
+      '<a href="https://source.example/x/">x</a>',
+  );
+}
+
 console.log("\nThe repository's own content");
 const contentRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
