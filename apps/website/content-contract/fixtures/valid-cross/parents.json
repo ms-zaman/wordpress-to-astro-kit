@@ -1,8 +1,8 @@
 {
   "kind": "parents",
   "pages": [
-    { "slug": "about", "locale": "en" },
-    { "slug": "team", "locale": "en", "parent": "about" },
-    { "slug": "leads", "locale": "en", "parent": "team" }
+    { "slug": "about", "locale": "%locale%" },
+    { "slug": "team", "locale": "%locale%", "parent": "about" },
+    { "slug": "leads", "locale": "%locale%", "parent": "team" }
   ]
 }

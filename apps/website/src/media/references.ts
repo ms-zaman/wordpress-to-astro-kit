@@ -52,7 +52,28 @@ const ASCII_SPACE = /[ \t\r\n\f\v]+/;
 
 const ATTRIBUTE =
   /\b(src|srcset|href|poster|data-src|data-srcset|data-lazy-src|data-lazy-srcset)=("|')([^"']*)\2/gi;
-const CSS_URL = /url\(\s*(["']?)([^)"']*)\1\s*\)/gi;
+/**
+ * The quote around a CSS `url(…)` value — including the HTML-ENTITY forms.
+ *
+ * A `style` attribute is HTML before it is CSS, so its inner quotes arrive
+ * escaped: WordPress's `esc_attr()` writes
+ *
+ *     style="background-image:url(&apos;https://example.com/a.png&apos;)"
+ *
+ * and a pattern that only knows `"` and `'` captures `&apos;https://…png&apos;`
+ * as the URL. Measured on ja.wordpress.org: six absolute image URLs were
+ * reported as "a document-relative reference" — the classification for a value
+ * the engine cannot resolve — because each one began with an ampersand.
+ *
+ * The quote is captured so the rewrite puts back the SAME spelling it found:
+ * re-emitting `'` where the document had `&apos;` would be a change to markup
+ * this engine has no reason to make.
+ */
+const CSS_QUOTE = String.raw`(?:["']|&quot;|&#0?34;|&apos;|&#0?39;)`;
+const CSS_URL = new RegExp(
+  String.raw`url\(\s*(${CSS_QUOTE})?([^)"']*?)\1?\s*\)`,
+  "gi",
+);
 const MARKDOWN = /(!?\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g;
 
 /** Where in a document a reference was found. */
@@ -225,10 +246,18 @@ export function rewriteReferences(
     },
   );
 
-  html = html.replace(CSS_URL, (whole, quote: string, value: string) => {
-    if (value === "") return whole;
-    return `url(${quote}${decide(value)}${quote})`;
-  });
+  html = html.replace(
+    CSS_URL,
+    (whole, quote: string | undefined, value: string) => {
+      if (value === "") return whole;
+      // The quote group is OPTIONAL, so it is `undefined` for a bare
+      // `url(https://…)` rather than the empty string an unconditional group
+      // used to give. Interpolating it directly wrote the six characters
+      // "undefined" on both sides of the URL.
+      const mark = quote ?? "";
+      return `url(${mark}${decide(value)}${mark})`;
+    },
+  );
 
   html = html.replace(
     MARKDOWN,

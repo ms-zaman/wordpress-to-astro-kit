@@ -1,7 +1,7 @@
 ---
 slug: hello
 title: Hello
-locale: en
+locale: %locale%
 cluster: posts/hello
 updatedAt: 2026-01-01
 publishedAt: 2026-01-01

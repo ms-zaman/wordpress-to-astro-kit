@@ -1,6 +1,6 @@
 {
   "slug": "laptops",
-  "name": { "en": "Laptops" },
+  "name": { "%locale%": "Laptops" },
   "source": {
     "system": "wordpress",
     "sourceId": "laptops",

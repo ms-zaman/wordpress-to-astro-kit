@@ -83,6 +83,7 @@ import { routeKey, sitePath } from "../src/routing/url-shape.ts";
 import { buildSearchIndex } from "../src/search/search-document.ts";
 import { search } from "../src/search/search-query.ts";
 import { validateContentTree } from "../content-contract/read-entries.ts";
+import { migration } from "../../../migration.config.ts";
 
 let passed = 0;
 const failures: string[] = [];
@@ -750,10 +751,20 @@ check(
 
 // ---------------------------------------------------------------------------
 console.log("\nThe media seam and the body pipeline");
+
+/**
+ * The uploads namespace THIS project configured, not WordPress's default.
+ *
+ * These checks used to spell `/wp-content/uploads/` thirteen times. That is
+ * WordPress's default and the kit ships it, so they passed here and failed on
+ * the first migration of a site that stores its library anywhere else — a
+ * Jetpack-hosted source serves `/files/`, and four checks about `mediaUrl`
+ * then reported a defect in the media seam rather than in their own spelling.
+ */
+const UPLOADS = `/${migration.media.uploadsPath.replace(/^\/+|\/+$/g, "")}`;
 check(
   "a relative upload passes through with no origin",
-  mediaUrl("/wp-content/uploads/a.png", undefined) ===
-    "/wp-content/uploads/a.png",
+  mediaUrl(`${UPLOADS}/a.png`, undefined) === `${UPLOADS}/a.png`,
 );
 check(
   "the origin is required, so 'none' is expressible",
@@ -762,13 +773,13 @@ check(
   // this assertion and the one above passed only while no live origin was
   // set — and started failing the moment `kit:init` configured one, which is
   // how the defect was found.
-  mediaUrl("/wp-content/uploads/a.png", "https://m.example") ===
-    "https://m.example/wp-content/uploads/a.png",
+  mediaUrl(`${UPLOADS}/a.png`, "https://m.example") ===
+    `https://m.example${UPLOADS}/a.png`,
 );
 check(
   "a relative upload takes the configured origin",
-  mediaUrl("/wp-content/uploads/a.png", "https://media.example") ===
-    "https://media.example/wp-content/uploads/a.png",
+  mediaUrl(`${UPLOADS}/a.png`, "https://media.example") ===
+    `https://media.example${UPLOADS}/a.png`,
 );
 check(
   "a non-upload reference is untouched",
@@ -778,29 +789,28 @@ check(
 check(
   "rewriteMediaHtml rewrites src, srcset and url()",
   rewriteMediaHtml(
-    '<img src="/wp-content/uploads/a.png" srcset="/wp-content/uploads/a-300.png 300w, /wp-content/uploads/a.png 800w"><div style="background:url(/wp-content/uploads/b.png)"></div>',
+    `<img src="${UPLOADS}/a.png" srcset="${UPLOADS}/a-300.png 300w, ${UPLOADS}/a.png 800w"><div style="background:url(${UPLOADS}/b.png)"></div>`,
     "https://m.example",
   ) ===
-    '<img src="https://m.example/wp-content/uploads/a.png" srcset="https://m.example/wp-content/uploads/a-300.png 300w, https://m.example/wp-content/uploads/a.png 800w"><div style="background:url(https://m.example/wp-content/uploads/b.png)"></div>',
+    `<img src="https://m.example${UPLOADS}/a.png" srcset="https://m.example${UPLOADS}/a-300.png 300w, https://m.example${UPLOADS}/a.png 800w"><div style="background:url(https://m.example${UPLOADS}/b.png)"></div>`,
 );
 check(
   "collectMediaRefs de-duplicates",
-  collectMediaRefs(
-    '<img src="/wp-content/uploads/a.png"><a href="/wp-content/uploads/a.png">',
-  ).length === 1,
+  collectMediaRefs(`<img src="${UPLOADS}/a.png"><a href="${UPLOADS}/a.png">`)
+    .length === 1,
 );
 check(
   "mediaSrcset needs two candidates",
-  mediaSrcset({ url: "/wp-content/uploads/a.png", width: 800 }, undefined) ===
+  mediaSrcset({ url: `${UPLOADS}/a.png`, width: 800 }, undefined) ===
     undefined &&
     mediaSrcset(
       {
-        url: "/wp-content/uploads/a.png",
+        url: `${UPLOADS}/a.png`,
         width: 800,
-        variants: [{ url: "/wp-content/uploads/a-300.png", width: 300 }],
+        variants: [{ url: `${UPLOADS}/a-300.png`, width: 300 }],
       },
       undefined,
-    ) === "/wp-content/uploads/a-300.png 300w, /wp-content/uploads/a.png 800w",
+    ) === `${UPLOADS}/a-300.png 300w, ${UPLOADS}/a.png 800w`,
 );
 check(
   "deferBodyImages leaves a declared loading alone",
@@ -849,7 +859,7 @@ console.log("\nInternal links: the source site's own URLs, made this site's");
   const origin = "https://source.example";
   const html = internaliseLinks(
     [
-      '<a href="https://source.example/support/">support</a>',
+      '<a href="https://source.example/about/">a page this site publishes</a>',
       '<a href="https://www.source.example/a/?x=1#f">query and fragment</a>',
       '<a href="//source.example/b/">protocol-relative</a>',
       '<a href="https://other.example/c/">somebody else</a>',
@@ -860,7 +870,7 @@ console.log("\nInternal links: the source site's own URLs, made this site's");
   );
   check(
     "an absolute link to the source becomes root-relative",
-    html.includes('href="/support/"'),
+    html.includes('href="/about/"'),
   );
   check(
     "the query and fragment survive, and www is the same host",
@@ -886,6 +896,72 @@ console.log("\nInternal links: the source site's own URLs, made this site's");
     "with no configured origin, nothing is rewritten",
     internaliseLinks('<a href="https://source.example/x/">x</a>', undefined) ===
       '<a href="https://source.example/x/">x</a>',
+  );
+
+  // A HOST THAT SERVES MORE THAN THIS SITE.
+  //
+  // ja.wordpress.org also runs the support forums, the plugin directory and
+  // the team handbook. Internalising those turned about 490 links that WORKED
+  // into 404s, and a link carrying a scheme is classified external by the link
+  // gate and never checked — so nothing but the build audit could see it.
+  const withForum = internaliseLinks(
+    '<a href="https://source.example/support/forums/">f</a>' +
+      '<a href="https://source.example/support">bare</a>' +
+      '<a href="https://source.example/supportive/">not a prefix match</a>' +
+      '<a href="https://source.example/news/hello/">ours</a>',
+    "https://source.example",
+    ["/support"],
+  );
+  const withFile = internaliseLinks(
+    '<a href="https://source.example/wordpress-3.9-ja.zip">download</a>' +
+      '<a href="https://source.example/paper.pdf">paper</a>' +
+      '<a href="https://source.example/news/hello/">a page</a>',
+    "https://source.example",
+  );
+  check(
+    "A FILE THE BUILD DOES NOT EMIT STAYS ABSOLUTE",
+    // The media engine has already rewritten every file this site serves, so
+    // an extension still on the source host names a file nobody here serves.
+    withFile.includes('href="https://source.example/wordpress-3.9-ja.zip"') &&
+      withFile.includes('href="https://source.example/paper.pdf"'),
+  );
+  check(
+    "and an extension-less path beside it is still internalised",
+    withFile.includes('href="/news/hello/"'),
+  );
+
+  check(
+    "A NOT-MIGRATED PREFIX STAYS ABSOLUTE",
+    withForum.includes('href="https://source.example/support/forums/"'),
+  );
+  check(
+    "and so does the prefix with no trailing slash",
+    withForum.includes('href="https://source.example/support"'),
+  );
+  const relativeToForum = internaliseLinks(
+    '<a href="/support/forums/">relative</a>' +
+      '<a href="/already/">ours, relative</a>' +
+      '<a href="/robots.txt">a file this build serves</a>',
+    "https://source.example",
+    ["/support"],
+  );
+  check(
+    "A DECLARED PREFIX WRITTEN RELATIVELY IS MADE ABSOLUTE AGAIN",
+    relativeToForum.includes('href="https://source.example/support/forums/"'),
+  );
+  check(
+    "and nothing else relative is touched, files included",
+    relativeToForum.includes('href="/already/"') &&
+      relativeToForum.includes('href="/robots.txt"'),
+  );
+
+  check(
+    "but a path that merely STARTS WITH THE SAME LETTERS is internalised",
+    withForum.includes('href="/supportive/"'),
+  );
+  check(
+    "and everything this site does publish is still internalised",
+    withForum.includes('href="/news/hello/"'),
   );
 }
 

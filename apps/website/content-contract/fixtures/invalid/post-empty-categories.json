@@ -1,7 +1,7 @@
 {
   "slug": "no-category",
   "title": "No category",
-  "locale": "en",
+  "locale": "%locale%",
   "cluster": "posts/no-category",
   "updatedAt": "2026-01-01",
   "publishedAt": "2026-01-01",

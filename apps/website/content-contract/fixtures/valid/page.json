@@ -1,7 +1,7 @@
 {
   "slug": "team",
   "title": "Team",
-  "locale": "en",
+  "locale": "%locale%",
   "cluster": "pages/team",
   "updatedAt": "2026-01-01",
   "parent": "about",

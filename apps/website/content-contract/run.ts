@@ -5,7 +5,15 @@
 // the SAME `validateContentTree` seam `validate-content.ts` crosses.
 //
 // Node 24 baseline, no test runner. Invoke with `pnpm content:contract`.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -17,6 +25,7 @@ import {
   categorySchema,
   tagSchema,
 } from "../src/content-model/registries.ts";
+import { defaultLocale, localeCodes } from "../src/content-model/shared.ts";
 import { taxonomyTermSchema } from "../src/content-model/taxonomy-term.ts";
 import { seoOverrideSchema } from "../src/content-model/seo-override.ts";
 import {
@@ -27,6 +36,7 @@ import {
   type TaxonomyRegistries,
   type ValidationIssue,
 } from "../src/content-model/cross-entry.ts";
+import { migration } from "../../../migration.config.ts";
 import { sampleEntries, validateContentTree } from "./read-entries.ts";
 
 const fixturesDir = path.join(
@@ -34,8 +44,69 @@ const fixturesDir = path.join(
   "fixtures",
 );
 
+/**
+ * The project-specific values the fixtures are written against.
+ *
+ * They used to be written in `en`, and one of them in `pt-BR`, which made this
+ * suite fail on any project whose registry does not happen to contain those —
+ * the schema's locale enum is GENERATED from `content/config/locales.json`, so
+ * narrowing the registry to one non-English locale turned every valid fixture
+ * into a rejected one. Measured on a Japanese migration: 14 of 16 per-entry
+ * fixtures failed and both content trees became unreadable, for no reason
+ * connected to what they test.
+ *
+ * `%locale2%` falls back to the default when the registry holds only one, so a
+ * single-locale project exercises the same shapes with a repeated key rather
+ * than skipping them.
+ */
+const FIXTURE_TOKENS: Readonly<Record<string, string>> = {
+  "%locale%": defaultLocale,
+  "%locale2%":
+    localeCodes.find((code) => code !== defaultLocale) ?? defaultLocale,
+  // The media fixtures had the same problem in a second dimension: they spelled
+  // `/wp-content/uploads/` because that is WordPress's default and the kit ships
+  // it. A Jetpack-hosted source serves `/files/`, and configuring that turned
+  // the valid featured image into a rejected one and the deliberately-invalid
+  // rewritten URL into an accepted one — two failures about the fixture's
+  // spelling rather than about the schema.
+  "%uploadsPath%": `/${migration.media.uploadsPath.replace(/^\/+|\/+$/g, "")}`,
+};
+
+/** Substitute the sentinels in fixture TEXT, before it is parsed. */
+const withProjectConfig = (text: string): string =>
+  text.replace(
+    /%locale2?%|%uploadsPath%/g,
+    (token) => FIXTURE_TOKENS[token] ?? /* c8 ignore next */ token,
+  );
+
 const readFixture = (group: string, name: string): unknown =>
-  JSON.parse(readFileSync(path.join(fixturesDir, group, name), "utf8"));
+  JSON.parse(
+    withProjectConfig(
+      readFileSync(path.join(fixturesDir, group, name), "utf8"),
+    ),
+  );
+
+/**
+ * A content-tree fixture, materialised with this project's own values.
+ *
+ * The tree cases are read from disk by the real loader, so the substitution
+ * cannot happen in memory: the files themselves have to say the locale. They
+ * are copied to a scratch directory per run and the copy is what is validated.
+ */
+const materialise = (source: string): string => {
+  const destination = mkdtempSync(path.join(tmpdir(), "content-tree-"));
+  const walk = (from: string, to: string): void => {
+    mkdirSync(to, { recursive: true });
+    for (const item of readdirSync(from, { withFileTypes: true })) {
+      const a = path.join(from, item.name);
+      const b = path.join(to, item.name);
+      if (item.isDirectory()) walk(a, b);
+      else writeFileSync(b, withProjectConfig(readFileSync(a, "utf8")));
+    }
+  };
+  walk(source, destination);
+  return destination;
+};
 
 const listFixtures = (group: string): string[] =>
   readdirSync(path.join(fixturesDir, group))
@@ -176,7 +247,7 @@ for (const entry of readdirSync(treesDir, { withFileTypes: true }).sort(
 )) {
   if (!entry.isDirectory()) continue;
   const caseDir = path.join(treesDir, entry.name);
-  const contentRoot = path.join(caseDir, "content");
+  const contentRoot = materialise(path.join(caseDir, "content"));
   const expectation = JSON.parse(
     readFileSync(path.join(caseDir, "expected.json"), "utf8"),
   ) as TreeExpectation;

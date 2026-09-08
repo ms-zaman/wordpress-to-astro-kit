@@ -1,6 +1,6 @@
 {
   "path": "/blog/",
-  "locale": "en",
+  "locale": "%locale%",
   "metaTitle": "The blog",
   "metaDescription": "Every post, newest first.",
   "canonical": "/blog/",

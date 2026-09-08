@@ -1,5 +1,5 @@
 {
   "slug": "sample",
-  "name": { "en": "Sample" },
+  "name": { "%locale%": "Sample" },
   "source": { "system": "sample" }
 }

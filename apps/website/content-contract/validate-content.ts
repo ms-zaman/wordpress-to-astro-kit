@@ -33,8 +33,36 @@ const production = process.argv.includes("--production");
 const problems: string[] = [];
 const note = (message: string) => problems.push(message);
 
-const readJson = (relativePath: string): unknown =>
-  JSON.parse(readFileSync(path.join(contentRoot, relativePath), "utf8"));
+/**
+ * Read one registry file.
+ *
+ * A missing or unparseable file is a PROBLEM, not an exception. The list of
+ * files to read is derived from `migration.config.ts` — every configured
+ * taxonomy expects a registry — so the first person to remove a sample
+ * taxonomy in the wrong order got an ENOENT stack trace from `node:fs` naming
+ * an absolute path, with nothing to say which config field asked for it.
+ */
+const MISSING = Symbol("missing");
+
+const readJson = (relativePath: string): unknown => {
+  let raw: string;
+  try {
+    raw = readFileSync(path.join(contentRoot, relativePath), "utf8");
+  } catch {
+    note(
+      `${relativePath}: no such file. Something in migration.config.ts asks ` +
+        "for this registry — a taxonomy in `taxonomies`, or a custom type in " +
+        "`postTypes`. Remove the configuration or add the file.",
+    );
+    return MISSING;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (cause) {
+    note(`${relativePath}: is not valid JSON — ${(cause as Error).message}`);
+    return MISSING;
+  }
+};
 
 const validateRegistry = (
   relativePath: string,
@@ -46,6 +74,7 @@ const validateRegistry = (
   },
 ): Array<Record<string, unknown>> => {
   const rows = readJson(relativePath);
+  if (rows === MISSING) return [];
   if (!Array.isArray(rows)) {
     note(`${relativePath}: expected an array of registry rows.`);
     return [];
@@ -186,14 +215,16 @@ assertUnique(
 );
 console.log(`  seo overrides:  ${seoOverrides.length} rows`);
 
-try {
-  const redirects = parseRedirectMap(readJson("redirects.json"));
-  console.log(
-    `  redirects:      ${redirects.rules.length} rule(s), ${redirects.splats.length} splat(s)`,
-  );
-} catch (error) {
-  note(`redirects.json: ${(error as Error).message}`);
-}
+const redirectData = readJson("redirects.json");
+if (redirectData !== MISSING)
+  try {
+    const redirects = parseRedirectMap(redirectData);
+    console.log(
+      `  redirects:      ${redirects.rules.length} rule(s), ${redirects.splats.length} splat(s)`,
+    );
+  } catch (error) {
+    note(`redirects.json: ${(error as Error).message}`);
+  }
 
 const tree = validateContentTree(contentRoot, {
   authors: authors.map((row) => row.slug as string),

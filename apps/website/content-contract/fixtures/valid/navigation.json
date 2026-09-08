@@ -1,12 +1,12 @@
 {
   "slug": "header",
-  "name": { "en": "Main Menu" },
+  "name": { "%locale%": "Main Menu" },
   "items": [
-    { "label": { "en": "Home" }, "href": "/" },
+    { "label": { "%locale%": "Home" }, "href": "/" },
     {
-      "label": { "en": "About" },
+      "label": { "%locale%": "About" },
       "href": "/about/",
-      "children": [{ "label": { "en": "Team" }, "href": "/about/team/" }]
+      "children": [{ "label": { "%locale%": "Team" }, "href": "/about/team/" }]
     }
   ]
 }

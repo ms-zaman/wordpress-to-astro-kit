@@ -1,7 +1,7 @@
 {
   "slug": "unsourced",
   "title": "Unsourced",
-  "locale": "en",
+  "locale": "%locale%",
   "cluster": "posts/unsourced",
   "updatedAt": "2026-01-01",
   "publishedAt": "2026-01-01",

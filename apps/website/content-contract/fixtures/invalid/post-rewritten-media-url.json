@@ -1,14 +1,14 @@
 {
   "slug": "rewritten",
   "title": "Rewritten media",
-  "locale": "en",
+  "locale": "%locale%",
   "cluster": "posts/rewritten",
   "updatedAt": "2026-01-01",
   "publishedAt": "2026-01-01",
   "author": "jane-doe",
   "categories": ["news"],
   "featuredImage": {
-    "url": "https://cdn.example.net/wp-content/uploads/2026/01/image.jpg"
+    "url": "https://cdn.example.net%uploadsPath%/2026/01/image.jpg"
   },
   "source": { "system": "authored" }
 }

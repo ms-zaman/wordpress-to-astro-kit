@@ -15,6 +15,12 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "@playwright/test";
 
+import {
+  identifyAsset,
+  resolveMediaProfile,
+} from "../../apps/website/src/media/asset-identity.ts";
+import { migration } from "../../migration.config.ts";
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -30,9 +36,72 @@ const manifest = JSON.parse(
 };
 
 /** Every page route this build published. */
-const pages = manifest.routes.inventory.filter(
+const allPages = manifest.routes.inventory.filter(
   (route) => route.kind === "page",
 );
+
+/**
+ * How many pages one whole-site check may open.
+ *
+ * This used to be "all of them", on the reasoning that "the kit has few enough
+ * pages to check them all". The kit does. A migration does not: the first real
+ * one produced 994 page routes, and both whole-site checks here died on
+ * Playwright's 30-second timeout somewhere in the third year of the archive —
+ * reporting a timeout, which is neither a pass nor the defect they look for.
+ *
+ * So it samples, EVENLY across the inventory rather than from the front, and
+ * the assertion message says how many it opened. A check that silently looked
+ * at 40 of 994 pages while reading like it looked at all of them is the kind
+ * of green this repository is written against.
+ */
+const SAMPLE_LIMIT = 60;
+
+const sampled = <T>(rows: readonly T[], limit: number): readonly T[] => {
+  if (rows.length <= limit) return rows;
+  const step = rows.length / limit;
+  return Array.from({ length: limit }, (_, i) => rows[Math.floor(i * step)]!);
+};
+
+const pages = sampled(allPages, SAMPLE_LIMIT);
+
+/** What "checked" honestly covers, for the assertion messages. */
+const coverage =
+  pages.length === allPages.length
+    ? `all ${allPages.length} page(s)`
+    : `${pages.length} of ${allPages.length} page(s), sampled evenly`;
+
+/**
+ * Is this reference one the engine should have brought local, and did not?
+ *
+ * Asked of `identifyAsset`, which is the kit's ONE authority on what an asset
+ * reference is, rather than restated here for a fifth time. Two rules were
+ * tried and both were wrong:
+ *
+ *   `url.includes("/wp-content/uploads/")` — WordPress's DEFAULT path, not
+ *   this site's. On a Jetpack-hosted source, whose library is at `/files/`,
+ *   every image could still be fetched from the old server and this check
+ *   would pass. A false negative in the one check that defines "migrated".
+ *
+ *   `url.includes(configuredUploadsPath)` — a path on ANY host. With `/files/`
+ *   configured, it flagged 59 images on wordpress.org and i1.wp.com, none of
+ *   which this migration owns. A false positive, and exactly the mistake the
+ *   paragraph below warns about.
+ *
+ * The rule is the HOST together with the namespace, which is what
+ * `identifyAsset` decides. A reference is stale when the engine calls it
+ * migratable (SUPPORTED or CONFIGURED) and it is still spelled at the source
+ * rather than under `localBase` — namespace `"output"` is the rewritten form.
+ */
+const PROFILE = resolveMediaProfile(migration.media, migration.liveOrigin);
+
+const isStale = (url: string): boolean => {
+  const identity = identifyAsset(url, PROFILE);
+  return (
+    (identity.classification === "SUPPORTED" ||
+      identity.classification === "CONFIGURED") &&
+    identity.namespace !== "output"
+  );
+};
 
 test.describe("migrated media", () => {
   test("EVERY MIGRATED IMAGE ON EVERY PAGE ACTUALLY DECODED", async ({
@@ -51,7 +120,10 @@ test.describe("migrated media", () => {
     // party being up.
     const broken: string[] = [];
     for (const route of pages) {
-      await page.goto(route.path);
+      // `domcontentloaded`, not `load`: this reads the DOM, and waiting for
+      // `load` waits for every third-party image on the page — the exact
+      // dependency the paragraph above says this check must not have.
+      await page.goto(route.path, { waitUntil: "domcontentloaded" });
       const bad = await page.locator("img").evaluateAll((nodes) =>
         nodes
           .filter((node) => {
@@ -64,7 +136,10 @@ test.describe("migrated media", () => {
       );
       for (const src of bad) broken.push(`${route.path}: ${src}`);
     }
-    expect(broken, "images this site serves that did not decode").toEqual([]);
+    expect(
+      broken,
+      `images this site serves that did not decode (${coverage})`,
+    ).toEqual([]);
   });
 
   test("NO PAGE STILL POINTS AT THE SOURCE WORDPRESS INSTALL", async ({
@@ -75,7 +150,7 @@ test.describe("migrated media", () => {
     // still asking the old server for a file.
     const stale: string[] = [];
     for (const route of pages) {
-      await page.goto(route.path);
+      await page.goto(route.path, { waitUntil: "domcontentloaded" });
       const found = await page.evaluate(() => {
         const urls: string[] = [];
         for (const node of document.querySelectorAll(
@@ -98,10 +173,12 @@ test.describe("migrated media", () => {
         // `partner.example.org` is deliberately external and stays as it is —
         // the rule is the HOST, not the path, which is exactly what makes the
         // engine safe to run over a body full of other people's images.
-        if (url.includes("/wp-content/uploads/") && !url.includes("partner."))
-          stale.push(`${route.path}: ${url}`);
+        if (isStale(url)) stale.push(`${route.path}: ${url}`);
     }
-    expect(stale, "references still pointing at the source site").toEqual([]);
+    expect(
+      stale,
+      `references still pointing at the source site (${coverage})`,
+    ).toEqual([]);
   });
 
   test("a responsive migrated image serves its renditions", async ({

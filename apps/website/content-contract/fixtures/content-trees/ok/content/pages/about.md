@@ -1,7 +1,7 @@
 ---
 slug: about
 title: About
-locale: en
+locale: %locale%
 cluster: pages/about
 updatedAt: 2026-01-01
 source:

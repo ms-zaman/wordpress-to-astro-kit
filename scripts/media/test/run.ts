@@ -385,6 +385,37 @@ check("M10: FRONT-MATTER MEDIA IS SCANNED, INCLUDING VARIANTS", () => {
   );
 });
 
+check("M10b: A STYLE ATTRIBUTE'S QUOTES ARRIVE AS HTML ENTITIES", () => {
+  // A `style` attribute is HTML before it is CSS, so `esc_attr()` escapes the
+  // quotes inside it. Measured on ja.wordpress.org: six absolute image URLs
+  // were classified "a document-relative reference" because the value the
+  // engine read began with `&apos;`.
+  const forms = [
+    ["&apos;", "&apos;"],
+    ["&quot;", "&quot;"],
+    ["&#39;", "&#39;"],
+    ["&#034;", "&#034;"],
+    ["'", "'"],
+    ['"', '"'],
+    ["", ""],
+  ] as const;
+  for (const [open, close] of forms) {
+    const document = `<div style="background-image:url(${open}/wp-content/uploads/a.png${close})"></div>`;
+    const references = findReferences(document);
+    equal(references.length, 1, `one reference for ${open || "no quote"}`);
+    equal(
+      references[0]!.url,
+      "/wp-content/uploads/a.png",
+      `the URL alone for ${open || "no quote"}`,
+    );
+    equal(
+      rewriteReferences(document, PROFILE).html,
+      `<div style="background-image:url(${open}/media/a.png${close})"></div>`,
+      `rewritten, keeping the quote spelling for ${open || "no quote"}`,
+    );
+  }
+});
+
 check("M11: EVERY SRCSET CANDIDATE IS OWNED, NOT JUST THE FIRST", () => {
   const references = findReferences(
     '<img srcset="/wp-content/uploads/a.png 480w, /wp-content/uploads/b.png 1200w">',

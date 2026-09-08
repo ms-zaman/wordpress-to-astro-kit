@@ -1,6 +1,6 @@
 {
   "slug": "news",
-  "name": { "en": "News" },
+  "name": { "%locale%": "News" },
   "source": {
     "system": "wordpress",
     "sourceId": "3",

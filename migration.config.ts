@@ -385,6 +385,27 @@ export interface MigrationConfig {
    * cannot enumerate what falls under a prefix, only a host can honour one.
    */
   readonly liveLanguagePrefixes: readonly string[];
+  /**
+   * Path prefixes the SOURCE HOST answers that this migration does not
+   * publish, left as absolute URLs in migrated bodies.
+   *
+   * A WordPress body stores internal links absolutely, and the renderer makes
+   * every link on the source's own origin root-relative. That is right while
+   * the host serves one WordPress site and wrong the moment it serves more
+   * than one thing.
+   *
+   * Measured on ja.wordpress.org, whose host also runs the support forums, the
+   * plugin directory and the team handbook: 341 links to `/support/`, 68 to
+   * `/plugins/`, 53 to `/team/` and 29 to three more — about 490 links that
+   * WORKED as absolute URLs and became 404s on the migrated site. The build
+   * audit found them; nothing else could, because a link with a scheme is
+   * classified external and never checked.
+   *
+   * `/wp-content/` and `/wp-includes/` are NOT in this list: they are facts
+   * about WordPress rather than about your site, so `rendering/links.ts` holds
+   * them itself. This list is for what is particular to your host.
+   */
+  readonly notMigratedPaths: readonly string[];
   readonly permalinks: Permalinks;
   /** Where captures and crawls are stored, relative to the repository root. */
   readonly evidenceDir: string;
@@ -420,6 +441,10 @@ export interface MigrationConfig {
 export const migration: MigrationConfig = {
   liveOrigin: undefined,
   liveLanguagePrefixes: [],
+  // Empty because the kit's sample site serves everything it links to. Add a
+  // prefix the moment discovery finds the source host serving something this
+  // build does not: a forum, a shop, a docs app, a second WordPress install.
+  notMigratedPaths: [],
   permalinks: {
     post: "/%postname%/",
     page: "/%pagename%/",

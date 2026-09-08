@@ -4,7 +4,7 @@
     {
       "collection": "pages",
       "slug": "about",
-      "locale": "en",
+      "locale": "%locale%",
       "cluster": "pages/about"
     },
     {

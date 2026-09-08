@@ -1,7 +1,7 @@
 ---
 slug: orphan
 title: Orphan
-locale: en
+locale: %locale%
 cluster: pages/orphan
 updatedAt: 2026-01-01
 parent: missing

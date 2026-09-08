@@ -1,8 +1,8 @@
 {
   "slug": "laptops",
   "parent": "electronics",
-  "name": { "en": "Laptops", "pt-BR": "Notebooks" },
-  "description": { "en": "Portable computers." },
+  "name": { "%locale%": "Laptops", "%locale2%": "Notebooks" },
+  "description": { "%locale%": "Portable computers." },
   "source": {
     "system": "wordpress",
     "sourceId": "42",

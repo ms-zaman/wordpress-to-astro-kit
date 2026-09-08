@@ -4,13 +4,13 @@
     {
       "collection": "pages",
       "slug": "about",
-      "locale": "en",
+      "locale": "%locale%",
       "cluster": "pages/about"
     },
     {
       "collection": "posts",
       "slug": "hello",
-      "locale": "en",
+      "locale": "%locale%",
       "cluster": "posts/hello"
     }
   ]

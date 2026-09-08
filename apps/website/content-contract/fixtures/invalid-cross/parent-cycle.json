@@ -1,7 +1,7 @@
 {
   "kind": "parents",
   "pages": [
-    { "slug": "a", "locale": "en", "parent": "b" },
-    { "slug": "b", "locale": "en", "parent": "a" }
+    { "slug": "a", "locale": "%locale%", "parent": "b" },
+    { "slug": "b", "locale": "%locale%", "parent": "a" }
   ]
 }

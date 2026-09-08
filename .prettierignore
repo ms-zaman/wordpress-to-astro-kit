@@ -11,8 +11,18 @@ CHECKLIST.md
 # Migrated bodies are the source site's rendered HTML, carried verbatim so the
 # reconciler can compare our page to the source's. A formatter rewriting them,
 # however harmlessly, ends that. Same principle as `research/` above.
-content/blog/posts/
-content/pages/
+#
+# EVERY entry body, not a list of directories. This used to name
+# `content/blog/posts/` — a path from the project the kit was extracted from,
+# which `content:transform` has never written to. `content/pages/` was
+# protected and `content/posts/` was not, so on the first real migration
+# `pnpm format` rewrote 642 migrated post bodies; measured, it removed a blank
+# line from inside the source site's HTML. A custom post type writes to its
+# own collection directory, so naming them one by one would have the same hole
+# again the first time somebody configured one.
+content/**/*.md
+# …except the READMEs, which this repository writes and does format.
+!content/**/README.md
 
 # Generated / vendored
 node_modules/
