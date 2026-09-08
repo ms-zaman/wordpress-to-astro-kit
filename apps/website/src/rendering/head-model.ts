@@ -14,6 +14,7 @@
  * | `twitter:card`, `twitter:title`, `twitter:description`     | `og:image` when the value is relative        |
  * | `BlogPosting` structured data (no URL fields)              | `canonical`, `WebSite`, `BreadcrumbList`     |
  */
+import { migratedMediaUrl } from "../media/references.ts";
 import { mediaOrigin, mediaUrl } from "./media.ts";
 import { SITE_NAME, absoluteUrl, siteOrigin } from "./site-identity.ts";
 
@@ -91,10 +92,22 @@ export function socialTags(input: HeadInput): MetaTag[] {
   if (url !== undefined)
     tags.push({ attribute: "property", key: "og:url", content: url });
 
+  // The social image goes through the media ENGINE before the origin seam.
+  //
+  // `mediaUrl` alone re-hosts a preserved uploads path, which is right when the
+  // library is still being served from the source and wrong once it has been
+  // copied: it produced `https://<this site>/wp-content/uploads/…`, a path the
+  // migrated site does not serve, so every share card was a broken image. The
+  // engine rewrites what it owns to `/media/…` first; `mediaUrl` then handles
+  // whatever was NOT copied, and `absoluteUrl` makes it absolute because a
+  // scraper cannot resolve a relative one.
   const image =
     input.ogImage === undefined
       ? undefined
-      : absoluteUrl(mediaUrl(input.ogImage.url, mediaOrigin()), origin);
+      : absoluteUrl(
+          mediaUrl(migratedMediaUrl(input.ogImage.url), mediaOrigin()),
+          origin,
+        );
   if (image !== undefined) {
     tags.push({ attribute: "property", key: "og:image", content: image });
     if (input.ogImage?.alt)

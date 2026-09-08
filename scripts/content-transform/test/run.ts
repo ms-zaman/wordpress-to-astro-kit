@@ -259,6 +259,31 @@ check("front matter quotes what YAML would misread", () => {
   assert(yaml.includes("  system: wordpress"), "nested maps are indented");
 });
 
+check("A STRING YAML WOULD COERCE IS QUOTED", () => {
+  // Found by a real migration: `sourceId: "1250"` went out unquoted, YAML read
+  // it back as a number, and the content model refused the entry — correctly,
+  // because a WordPress id is an identifier, not a quantity.
+  const yaml = toFrontMatter({
+    source: { sourceId: "1250" },
+    slug: "no",
+    a: "true",
+    b: "0755",
+    c: "12:30",
+    d: "2026-01-01T00:00:00",
+  });
+  assert(yaml.includes('sourceId: "1250"'), `a numeric id: ${yaml}`);
+  assert(yaml.includes('slug: "no"'), "a slug YAML reads as false");
+  assert(yaml.includes('a: "true"'), "a boolean-looking string");
+  assert(yaml.includes('b: "0755"'), "an octal-looking string");
+  assert(yaml.includes('c: "12:30"'), "a sexagesimal-looking string");
+  assert(yaml.includes('d: "2026-01-01T00:00:00"'), "a timestamp");
+  // And an ordinary word is still plain, so the files stay readable.
+  assert(
+    toFrontMatter({ slug: "hello-world" }).includes("slug: hello-world"),
+    "plain",
+  );
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length > 0) {
   console.error("\nTransform suite FAILED:");

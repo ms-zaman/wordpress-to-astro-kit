@@ -19,6 +19,7 @@ import {
   META_DESCRIPTION_MAX,
   blogPostingJsonLd,
 } from "../rendering/head-model.ts";
+import { migratedMediaUrl } from "../media/references.ts";
 import { mediaOrigin, mediaUrl } from "../rendering/media.ts";
 import {
   formatDate,
@@ -142,7 +143,8 @@ const crumbs = trailCrumbs(
     locale: data.locale,
     path: route.path,
     image:
-      data.featuredImage && mediaUrl(data.featuredImage.url, mediaOrigin()),
+      data.featuredImage &&
+      mediaUrl(migratedMediaUrl(data.featuredImage.url), mediaOrigin()),
     origin: siteOrigin(),
   })}
   crumbs={crumbs}

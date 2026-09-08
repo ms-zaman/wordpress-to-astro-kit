@@ -33,10 +33,11 @@
 // Everything else is returned byte-identical, including its query and its
 // fragment. "Contains /wp-content/uploads/" is NOT the test — somebody else's
 // WordPress site is also somebody else's WordPress site.
-import type { MediaProfile } from "../../../../migration.config.ts";
+import { migration, type MediaProfile } from "../../../../migration.config.ts";
 import {
   identifyAsset,
   isMigrated,
+  resolveMediaProfile,
   type AssetIdentity,
 } from "./asset-identity.ts";
 
@@ -146,6 +147,27 @@ export function assetReferencesIn(
     found.push({ reference, identity });
   }
   return found;
+}
+
+/**
+ * One media reference, rewritten to the path this site serves it at.
+ *
+ * `rewriteReferences` works over a DOCUMENT; a schema field holds a bare URL,
+ * and the head model, a component prop and a manifest row all need the same
+ * answer for one. Without this they reached for `mediaUrl` instead, which only
+ * re-hosts — so a copied asset kept the source's uploads path in the one place
+ * a social scraper reads.
+ */
+export function migratedMediaUrl(
+  url: string,
+  profile: MediaProfile = resolveMediaProfile(
+    migration.media,
+    migration.liveOrigin,
+  ),
+): string {
+  const identity = identifyAsset(url, profile);
+  if (!isMigrated(identity) || identity.local === undefined) return url;
+  return `${identity.local}${identity.query ?? ""}${identity.fragment ?? ""}`;
 }
 
 export interface RewriteResult {

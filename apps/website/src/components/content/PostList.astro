@@ -11,6 +11,7 @@ import { Heading, Text, type SectionHeadingLevel } from "@wpk/ui";
 
 import ImageBlock from "./ImageBlock.astro";
 import { formatDate } from "../../rendering/post-view.ts";
+import { migratedMediaUrl } from "../../media/references.ts";
 import { mediaOrigin, mediaUrl } from "../../rendering/media.ts";
 
 /**
@@ -93,7 +94,10 @@ const origin = mediaOrigin();
               {post.author.avatar ? (
                 <img
                   class="wpk-post-card__avatar"
-                  src={mediaUrl(post.author.avatar.url, origin)}
+                  src={mediaUrl(
+                    migratedMediaUrl(post.author.avatar.url),
+                    origin,
+                  )}
                   alt=""
                   width="24"
                   height="24"

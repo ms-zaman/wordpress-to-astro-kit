@@ -474,14 +474,29 @@ function authorRows(
 /** Front matter as YAML the kit's own reader parses. */
 export function toFrontMatter(fields: Record<string, unknown>): string {
   const lines: string[] = ["---"];
+  /**
+   * YAML would COERCE an unquoted scalar, and a string must stay a string.
+   *
+   * Caught by the collection schema on a real migration: `sourceId: "1250"`
+   * was emitted unquoted, YAML read it back as a NUMBER, and the content model
+   * refused the entry — correctly, because a WordPress id is an identifier and
+   * not a quantity. The failure was loud and immediate, which is the schema
+   * doing its job; the writer was wrong.
+   *
+   * So anything YAML has a type rule for is quoted: numbers (including the
+   * leading-zero octal form), booleans in all six spellings YAML 1.1 accepts,
+   * nulls, timestamps, and the sexagesimal form nobody remembers until one
+   * turns up in a slug.
+   */
+  const YAML_TYPED =
+    /^(?:[-+]?\d[\d_]*(?:\.\d*)?(?:[eE][-+]?\d+)?|0[xXoObB][0-9a-fA-F_]+|[-+]?\.(?:inf|nan)|true|True|TRUE|false|False|FALSE|null|Null|NULL|~|[yYnN]|yes|Yes|YES|no|No|NO|on|On|ON|off|Off|OFF|\d{4}-\d{2}-\d{2}.*|[-+]?\d+(?::\d+)+)$/;
+
   const scalar = (value: unknown): string => {
     if (typeof value === "number" || typeof value === "boolean")
       return String(value);
     const text = String(value);
-    // Quoted when YAML would read it as something else, or when it carries a
-    // character that ends a scalar. A title is arbitrary text.
-    return /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/.test(text) &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(text)
+    // Plain only when YAML reads it back as the same string.
+    return /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/.test(text) && !YAML_TYPED.test(text)
       ? text
       : JSON.stringify(text);
   };

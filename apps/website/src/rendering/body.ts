@@ -33,6 +33,7 @@
 // an origin. With `migrateFrom` empty, which is the default, the engine takes
 // nothing and this behaves exactly as it did before it existed.
 import { migration } from "../../../../migration.config.ts";
+import { resolveMediaProfile } from "../media/asset-identity.ts";
 import { rewriteReferences } from "../media/references.ts";
 import { internaliseLinks } from "./links.ts";
 import {
@@ -42,6 +43,22 @@ import {
   rewriteMediaHtml,
 } from "./media.ts";
 
+/**
+ * The media profile with the live origin folded in — `resolveMediaProfile`.
+ *
+ * The RAW profile was passed here, and that was a real defect on a real
+ * migration: a source whose bodies carry ABSOLUTE uploads URLs (which is what
+ * WordPress's editors store) migrated with every image still pointing at the
+ * site being replaced, because `media.migrateFrom` was empty and nothing folded
+ * `liveOrigin` in. Every other reader of the profile resolved it; this one call
+ * site did not, so the media engine was correct everywhere except where the
+ * pages are actually rendered.
+ */
+const MEDIA_PROFILE = resolveMediaProfile(
+  migration.media,
+  migration.liveOrigin,
+);
+
 export function prepareBody(
   html: string,
   origin: string | undefined = mediaOrigin(),
@@ -50,7 +67,7 @@ export function prepareBody(
   // Then the links, over whatever absolute source-origin references are left,
   // which are the internal PAGE links a WordPress editor stores absolutely.
   const migrated = internaliseLinks(
-    rewriteReferences(html.trim(), migration.media).html,
+    rewriteReferences(html.trim(), MEDIA_PROFILE).html,
   );
   return inlineEmojiImages(
     deferBodyImages(rewriteMediaHtml(migrated, origin)),

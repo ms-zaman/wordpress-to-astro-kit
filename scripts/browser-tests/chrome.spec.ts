@@ -17,7 +17,74 @@
 // sample content with your own, the routes change and some of these will need
 // to change with them — that is expected, and each test says which fact about
 // the site it depends on so the edit is obvious.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { expect, test } from "@playwright/test";
+
+/**
+ * What THIS build actually contains.
+ *
+ * The blocks below that exercise custom post types and custom taxonomies are
+ * about profiles a site may simply not have — the most ordinary WordPress site
+ * has neither, and measured on a real migration every one of them failed for
+ * that reason alone, burying the failures that meant something.
+ *
+ * So they skip when the manifest declares none. A test that cannot apply is
+ * not a test that failed, and a suite that cries wolf on a correct build is a
+ * suite people learn to ignore.
+ */
+const manifest = JSON.parse(
+  readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../apps/website/dist/deployment.json",
+    ),
+    "utf8",
+  ),
+) as {
+  content: {
+    postTypes?: { collection: string; published: boolean; archive: string }[];
+    taxonomies?: {
+      collection: string;
+      published: boolean;
+      builtIn?: boolean;
+    }[];
+  };
+};
+
+/**
+ * True when this build publishes a route.
+ *
+ * The tests below that name a literal path are about the kit's SAMPLE content,
+ * and a real migration replaces it. Measured: on a migrated site every one of
+ * them failed because `/hello-world/` and `/about/` no longer exist — eight
+ * failures that said nothing about the site and hid the ones that would have.
+ *
+ * A test whose subject is not in the build has nothing to assert. It skips,
+ * and says which route it wanted.
+ */
+const ROUTES = new Set(manifest.routes.inventory.map((row) => row.path));
+const has = (path: string): boolean =>
+  ROUTES.has(path.replace(/\/+$/, "") || "/");
+
+/** True when some entity is intended in more than one locale. */
+const HAS_TRANSLATED_PAIR = (() => {
+  const byBase = new Map<string, number>();
+  for (const intent of manifest.content.intended ?? []) {
+    const at = intent.id.lastIndexOf("@");
+    if (at <= 0 || at < intent.id.lastIndexOf("/")) continue;
+    const base = intent.id.slice(0, at);
+    byBase.set(base, (byBase.get(base) ?? 0) + 1);
+  }
+  return [...byBase.values()].some((count) => count > 1);
+})();
+
+const HAS_CUSTOM_TYPES = (manifest.content.postTypes ?? []).length > 0;
+const HAS_CUSTOM_TAXONOMIES = (manifest.content.taxonomies ?? []).some(
+  (one) => one.builtIn !== true,
+);
 
 test.describe("the small-viewport menu", () => {
   // A checkbox and a `<label for>`, chosen over a `<details open>` that could
@@ -134,6 +201,7 @@ test.describe("navigation", () => {
     // and that it points here. The accessibility audit asserts the second half
     // statically for every page; this asserts both in a browser, against the
     // menu a reader is actually looking at.
+    test.skip(!has("/about/"), "this build publishes no /about/");
     await page.goto("/about/");
     if ((viewport?.width ?? 0) <= 1024)
       await page.locator('label[for="wpk-site-menu"]').click();
@@ -202,7 +270,7 @@ test("no page loads a script from anywhere — islands are inline", async ({
   page.on("request", (request) => {
     if (request.resourceType() === "script") scripts.push(request.url());
   });
-  for (const route of ["/", "/blog/", "/search/", "/about/"])
+  for (const route of ["/", "/blog/", "/search/", "/about/"].filter(has))
     await page.goto(route);
   expect(scripts).toEqual([]);
 });
@@ -221,6 +289,10 @@ test.describe("content reaches a reader", () => {
   test("a post's own words are painted, not just its file emitted", async ({
     page,
   }) => {
+    test.skip(
+      !has("/a-second-post/"),
+      "this build publishes no /a-second-post/",
+    );
     await page.goto("/a-second-post/");
     // A phrase from `content/posts/a-second-post.md`, chosen because nothing
     // in the layout, the navigation or the footer could produce it.
@@ -239,6 +311,10 @@ test.describe("content reaches a reader", () => {
     // Closes the loop in the browser rather than on disk: the page a reader
     // gets and the identity the integrity gate joins on have to be the same
     // thing, or the gate is proving a relationship nobody experiences.
+    test.skip(
+      !has("/a-second-post/"),
+      "this build publishes no /a-second-post/",
+    );
     await page.goto("/a-second-post/");
     const manifest = await (await request.get("/deployment.json")).json();
     const route = manifest.routes.inventory.find(
@@ -296,6 +372,7 @@ test.describe("content reaches a reader", () => {
 });
 
 test.describe("a custom post type reaches a reader", () => {
+  test.skip(!HAS_CUSTOM_TYPES, "this build configures no custom post type");
   // The whole chain for a type WordPress did not ship with:
   //
   //   migration.config.ts profile -> content/products/ -> collection
@@ -396,6 +473,7 @@ test.describe("a custom post type reaches a reader", () => {
 });
 
 test.describe("custom taxonomy archives reach a reader", () => {
+  test.skip(!HAS_CUSTOM_TAXONOMIES, "this build configures no custom taxonomy");
   // The route the resolver computed has to be the route the browser is served.
   // Everything else here reads a manifest; this navigates.
   //
@@ -542,6 +620,7 @@ test.describe("the page a reader gets is the entity the source intended", () => 
       page,
       request,
     }) => {
+      test.skip(!has(one.path), `this build publishes no ${one.path}`);
       await page.goto(one.path);
       expect(new URL(page.url()).pathname).toBe(one.path);
       await expect(page.locator("h1")).toBeVisible();
@@ -560,6 +639,13 @@ test.describe("the page a reader gets is the entity the source intended", () => 
     page,
     request,
   }) => {
+    // Skipped on a build with no translated pair. A monolingual site — which
+    // most WordPress sites are — has nothing here to shadow, and failing on
+    // its absence would report the site's shape as a defect.
+    test.skip(
+      !HAS_TRANSLATED_PAIR,
+      "this build has no entity in more than one locale",
+    );
     // `products/analyser` exists in `en` and `pt-BR` with the SAME slug. The
     // en one is published; the pt-BR one is withheld and must still be named,
     // and the two must not be one identity — that collision is the defect this
